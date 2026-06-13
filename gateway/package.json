@@ -1,0 +1,18 @@
+{
+  "name": "@calibre-onchain/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ENS CCIP-read (ENSIP-10) resolver gateway for *.calibre.eth — serves addr() + text() from the calibre public profile API. W0 scaffold; implementation lands in W6.2.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}
