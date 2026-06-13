@@ -90,6 +90,27 @@ Polymarket collector/anchor stack, the admin surface, and all deploy/infra.
 Copy `.env.example` to `.env` and fill in testnet values to run the services
 standalone. The example file ships placeholders only — never commit real keys.
 
+## Arc deployment (`CalibreMarket.sol`)
+
+The settlement core (W1.1) deploys to **Arc testnet** (chainId **5042002**, RPC
+`https://rpc.testnet.arc.network`, explorer `https://testnet.arcscan.app`,
+faucet `https://faucet.circle.com`). USDC accounting goes through the **6-decimal
+ERC-20** interface — Arc's native 18-decimal USDC gas asset is never touched.
+
+```bash
+cd contracts
+export USDC_ADDRESS=0x...          # 6-dec ERC-20 USDC on Arc testnet
+export RESOLVER_ADDRESS=0x...      # initial resolver (throwaway weekend key)
+forge script script/Deploy.s.sol:Deploy \
+  --rpc-url https://rpc.testnet.arc.network --broadcast
+```
+
+| Field | Value |
+|---|---|
+| Network | Arc testnet (chainId 5042002) |
+| `CalibreMarket` address | _TBD — recorded by W1.3 (#423) after the scripted round-trip_ |
+| Deploy tx | _TBD — W1.3_ |
+
 ## License
 
 [MIT](LICENSE).
