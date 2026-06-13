@@ -70,11 +70,14 @@ contract CalibreMarket {
     /// @notice chainMarketId => max total USDC (6-dec base units) `buy` may pull
     ///         on that market. 0 disables the cap. Belt-and-suspenders bound
     ///         (W8 §5, ~1,000 USDC) so a fully-compromised signer still can't
-    ///         mint unbounded exposure on one market.
+    ///         mint unbounded exposure on one market. This is a CUMULATIVE
+    ///         LIFETIME ceiling per market — `marketNotionalUsed` is never
+    ///         decremented — not a concurrent / windowed exposure bound. Markets
+    ///         are one-shot (single `resolve`), so lifetime == relevant exposure.
     mapping(uint256 => uint256) public marketNotionalCap;
 
-    /// @notice chainMarketId => USDC (6-dec) already pulled via `buy`. Compared
-    ///         against `marketNotionalCap`.
+    /// @notice chainMarketId => cumulative USDC (6-dec) ever pulled via `buy`.
+    ///         Monotonically increasing; compared against `marketNotionalCap`.
     mapping(uint256 => uint256) public marketNotionalUsed;
 
     /// @notice chainMarketId => market state.
