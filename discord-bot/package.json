@@ -1,18 +1,24 @@
 {
   "name": "@calibre-onchain/discord-bot",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Discord role-sync bot: resolve members' calibre.eth subnames -> read gg.calibre.rank -> assign Discord role. W0 scaffold; implementation lands in W6.4.",
+  "description": "Discord role-sync bot: resolve members' calibre.eth subnames -> read gg.calibre.rank over ENS -> assign the matching Discord role. Reads ENS only, never calls calibre. W6.4.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "tsc --noEmit -p tsconfig.test.json && node --test --import tsx \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "discord.js": "^14.15.0",
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
+    "tsx": "^4.19.0",
     "@types/node": "^20.0.0"
   }
 }
