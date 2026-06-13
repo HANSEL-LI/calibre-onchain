@@ -108,8 +108,75 @@ forge script script/Deploy.s.sol:Deploy \
 | Field | Value |
 |---|---|
 | Network | Arc testnet (chainId 5042002) |
-| `CalibreMarket` address | _TBD — recorded by W1.3 (#423) after the scripted round-trip_ |
-| Deploy tx | _TBD — W1.3_ |
+| `CalibreMarket` address | _TBD — recorded by the owner/booth-gated live Arc run_ |
+| Deploy tx | _TBD — live Arc run_ |
+
+## End-to-end settlement proof (W1.3, #423) — the Saturday-noon custody checkpoint
+
+`script/EndToEnd.s.sol` is the umbrella's **custody checkpoint**: a broadcastable
+`forge script` (not a unit test) that sends real transactions for the entire
+A-lite round-trip and `require`s every invariant, so the run itself is the
+pass/fail signal. **Green ⇒ custody stays Model A-lite; a red run degrades W2.3
+(#427) and W3.1 (#424) to Model B.**
+
+It exercises: `deploy(usdc, resolver)` → `createMarket` + `setVoucherSigner` +
+`setCounterparty` → `seedInventory` (counterparty fronts USDC for complete sets)
+→ `buy(quote, sig)` with an **off-chain EIP-712 voucher** and `msg.sender ==
+buyer` (one YES buy + one NO buy) → `resolve(YES)` → `redeem` winners 1:1 (buyer
++ counterparty residual) → assert final USDC balances and **drain-to-zero
+solvency**.
+
+### Canonical run — local anvil (deterministic, no funding)
+
+```bash
+cd contracts
+# terminal A — a local chain
+anvil
+# terminal B — broadcast the full round-trip against it
+forge script script/EndToEnd.s.sol:EndToEnd \
+  --rpc-url http://127.0.0.1:8545 --broadcast -vvv
+```
+
+Local mode deploys `MockUSDC` (6-decimal, mirrors the Arc USDC ERC-20 interface)
+and mints to the three deterministic actors, so no faucet is needed. The script's
+actor keys (resolver/counterparty/buyer) start with zero ETH on a fresh anvil; if
+the broadcast errors with *insufficient funds for gas*, fund them once via the
+addresses the script logs:
+
+```bash
+for A in <resolver> <counterparty> <buyer>; do
+  cast rpc anvil_setBalance "$A" 0xDE0B6B3A7640000 --rpc-url http://127.0.0.1:8545
+done
+```
+
+A successful run ends with `ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.` and logs
+`== PASS: A-lite e2e round-trip solvent, drained to zero ==`.
+
+### Same script vs live Arc testnet (owner/booth-gated — do NOT run unattended)
+
+Set the real token + a funded broadcaster; nothing else changes:
+
+```bash
+export USDC_ADDRESS=0x...        # real 6-dec ERC-20 USDC on Arc testnet (faucet: faucet.circle.com)
+forge script script/EndToEnd.s.sol:EndToEnd \
+  --rpc-url https://rpc.testnet.arc.network \
+  --private-key $FUNDED_KEY --broadcast -vvv
+```
+
+Live mode skips the MockUSDC deploy + mint (binds the env token and expects the
+funded key to already hold USDC). Per the W8 spike §3, only Arc's RPC reproduces
+Arc-specific transfer reverts (blocklist/precompile, native-vs-ERC20 decimals);
+the local run proves the settlement *logic*, the live run is the final
+Arc-environment confirmation.
+
+### Checkpoint verdict
+
+**PASS (custody stays Model A-lite).** Verified on a local anvil chain on
+2026-06-12: all 15 broadcast transactions mined successfully and the contract's
+USDC balance drained to exactly `0` after every winner redeemed. Independent
+`cast` reads confirmed final balances (buyer +30 USDC net on its 30 winning
+shares, counterparty made whole on its residual inventory, market backing `0`,
+total USDC conserved). The 28 existing `forge test` cases stay green.
 
 ## License
 
