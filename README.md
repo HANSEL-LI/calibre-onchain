@@ -10,8 +10,17 @@ This repository develops **APIs / services / contracts only — there is no
 frontend here.** All user-facing UI lives in the private calibre app, which
 consumes these packages (Python SDK import) and services (HTTP).
 
-> Status: **W0 scaffold** — package skeleton + working Foundry toolchain.
-> Implementation lands in follow-up sub-issues (W1.x, W6.2–W6.4, W7.2).
+> Status: **code-complete** — Arc settlement core + EIP-712 voucher (W1.x), the
+> ENS CCIP-read gateway + subnames + ranking lib (W6.2–W6.4), the on-chain agent
+> (W7.2), and the SDK are all merged and tested. The Saturday-noon custody
+> checkpoint **passed** (W1.3). Remaining work is live deployment + the ETHGlobal
+> submission, both owner/booth-gated.
+>
+> **Submission package:**
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (system + the four seams + the
+> hero data-flow; Arc requires a diagram) ·
+> [`docs/SUBMISSIONS.md`](docs/SUBMISSIONS.md) (per-prize write-ups) ·
+> [`docs/DEMO-SCRIPT.md`](docs/DEMO-SCRIPT.md) (the 3-minute storyboard).
 
 ## Architecture intent
 
