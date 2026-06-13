@@ -85,9 +85,8 @@ contract CalibreVoucherTest is Test {
     // --- happy path -------------------------------------------------------
 
     function test_ValidVoucherBuyMovesInventoryAndPullsUsdc() public {
-        // Buy 10 YES for 6 USDC (cost <= maxCost = 6.06 USDC). expiry 30s out.
-        uint256 maxCost = 606 * unit / 100; // 6.06 USDC = quote(6) * 1.01
-        uint256 cost = 6 * unit;
+        // Buy 10 YES; the signed maxCost (6 USDC) is the exact charge. expiry 30s out.
+        uint256 maxCost = 6 * unit; // the signer commits to this charge
         CalibreMarket.Quote memory q = _quote(1, 10, maxCost, 0, block.timestamp + 30);
         bytes memory sig = _sign(q, signerKey);
 
@@ -95,22 +94,21 @@ contract CalibreVoucherTest is Test {
         uint256 cpBefore = usdc.balanceOf(counterparty);
 
         vm.prank(alice);
-        market.buy(q, cost, sig);
+        market.buy(q, sig);
 
         assertEq(market.yesBalance(MARKET_ID, alice), 10, "buyer credited YES shares");
         assertEq(market.yesBalance(MARKET_ID, counterparty), 90, "inventory debited");
         assertEq(market.noBalance(MARKET_ID, counterparty), 100, "NO inventory untouched");
-        assertEq(usdc.balanceOf(alice), aliceBefore - cost, "buyer charged cost");
-        assertEq(usdc.balanceOf(counterparty), cpBefore + cost, "counterparty reimbursed");
+        assertEq(usdc.balanceOf(alice), aliceBefore - maxCost, "buyer charged the signed maxCost");
+        assertEq(usdc.balanceOf(counterparty), cpBefore + maxCost, "counterparty reimbursed");
         assertEq(market.nonces(alice), 1, "nonce advanced");
     }
 
     function test_BuyNoSideAndRedeemAfterResolve() public {
-        uint256 cost = 4 * unit;
         CalibreMarket.Quote memory q = _quote(0, 20, 5 * unit, 0, block.timestamp + 30);
         bytes memory sig = _sign(q, signerKey);
         vm.prank(alice);
-        market.buy(q, cost, sig);
+        market.buy(q, sig);
         assertEq(market.noBalance(MARKET_ID, alice), 20);
 
         vm.prank(resolver);
@@ -130,19 +128,19 @@ contract CalibreVoucherTest is Test {
         vm.warp(q.expiry); // block.timestamp == expiry => expired (strict <)
         vm.prank(alice);
         vm.expectRevert(CalibreMarket.VoucherExpired.selector);
-        market.buy(q, 6 * unit, sig);
+        market.buy(q, sig);
     }
 
     function test_RevertWhen_NonceReplayed() public {
         CalibreMarket.Quote memory q = _quote(1, 5, 7 * unit, 0, block.timestamp + 30);
         bytes memory sig = _sign(q, signerKey);
         vm.prank(alice);
-        market.buy(q, 5 * unit, sig); // nonce 0 consumed -> next is 1
+        market.buy(q, sig); // nonce 0 consumed -> next is 1
 
         // Re-submitting the same nonce-0 voucher reverts.
         vm.prank(alice);
         vm.expectRevert(CalibreMarket.BadNonce.selector);
-        market.buy(q, 5 * unit, sig);
+        market.buy(q, sig);
     }
 
     function test_RevertWhen_WrongSigner() public {
@@ -151,15 +149,38 @@ contract CalibreVoucherTest is Test {
         bytes memory sig = _sign(q, attackerKey); // signed by a non-authorized key
         vm.prank(alice);
         vm.expectRevert(CalibreMarket.BadSignature.selector);
-        market.buy(q, 6 * unit, sig);
+        market.buy(q, sig);
     }
 
-    function test_RevertWhen_CostAboveMaxCost() public {
-        CalibreMarket.Quote memory q = _quote(1, 10, 6 * unit, 0, block.timestamp + 30);
+    // --- #465 regression: the buyer cannot pay below the signed price ----
+
+    /// @notice The charge is the signed `q.maxCost`, full stop. There is no
+    ///         caller-supplied `cost`, so a voucher holder can no longer pay
+    ///         below fair price (`buy(q, 0, sig)`) to drain seeded inventory.
+    ///         Asserts the buyer pays exactly `maxCost` and the counterparty is
+    ///         fully reimbursed for the inventory it fronted — never under-collected.
+    ///
+    ///         Before the #465 fix this same voucher could be replayed with a
+    ///         caller `cost` of 0; the unsigned arg is now gone from the ABI, so
+    ///         underpayment is unrepresentable rather than merely reverted.
+    function test_Regression_BuyerChargedSignedMaxCost_NoUnderpay() public {
+        uint256 signedCost = 6 * unit; // the price the signer committed to
+        CalibreMarket.Quote memory q = _quote(1, 10, signedCost, 0, block.timestamp + 30);
         bytes memory sig = _sign(q, signerKey);
+
+        uint256 aliceBefore = usdc.balanceOf(alice);
+        uint256 cpBefore = usdc.balanceOf(counterparty);
+
         vm.prank(alice);
-        vm.expectRevert(CalibreMarket.MaxCostExceeded.selector);
-        market.buy(q, 6 * unit + 1, sig); // cost > maxCost
+        market.buy(q, sig);
+
+        // The buyer paid exactly the signed amount — not 0, not a partial sum.
+        assertEq(aliceBefore - usdc.balanceOf(alice), signedCost, "buyer paid the full signed price");
+        // The counterparty is reimbursed 1:1 for the 10 shares it fronted; its
+        // USDC is not under-collected, so the post-resolve redeem can't drain it.
+        assertEq(usdc.balanceOf(counterparty) - cpBefore, signedCost, "counterparty not under-collected");
+        // The notional cap meters the real charge, not a spoofed 0.
+        assertEq(market.marketNotionalUsed(MARKET_ID), signedCost, "notional booked at the real charge");
     }
 
     // --- additional binding / bound checks --------------------------------
@@ -174,7 +195,7 @@ contract CalibreVoucherTest is Test {
         usdc.approve(address(market), type(uint256).max);
         vm.prank(mallory);
         vm.expectRevert(CalibreMarket.WrongBuyer.selector);
-        market.buy(q, 6 * unit, sig);
+        market.buy(q, sig);
     }
 
     function test_RevertWhen_TamperedQuoteFailsSignature() public {
@@ -183,25 +204,25 @@ contract CalibreVoucherTest is Test {
         q.size = 11; // tamper after signing
         vm.prank(alice);
         vm.expectRevert(CalibreMarket.BadSignature.selector);
-        market.buy(q, 6 * unit, sig);
+        market.buy(q, sig);
     }
 
     function test_RevertWhen_NotionalCapExceeded() public {
         vm.prank(resolver);
         market.setMarketNotionalCap(MARKET_ID, 10 * unit); // 10 USDC cap
 
-        // First buy uses 7 USDC (ok).
+        // First buy charges the signed 8 USDC (ok, under the cap).
         CalibreMarket.Quote memory q0 = _quote(1, 7, 8 * unit, 0, block.timestamp + 30);
         bytes memory sig0 = _sign(q0, signerKey);
         vm.prank(alice);
-        market.buy(q0, 7 * unit, sig0);
+        market.buy(q0, sig0);
 
-        // Second buy of 4 USDC would push used to 11 > 10 cap -> revert.
+        // Second buy charges the signed 5 USDC; used would be 8+5=13 > 10 -> revert.
         CalibreMarket.Quote memory q1 = _quote(1, 4, 5 * unit, 1, block.timestamp + 30);
         bytes memory sig1 = _sign(q1, signerKey);
         vm.prank(alice);
         vm.expectRevert(CalibreMarket.NotionalCapExceeded.selector);
-        market.buy(q1, 4 * unit, sig1);
+        market.buy(q1, sig1);
     }
 
     function test_RevertWhen_BuyBeyondInventory() public {
@@ -210,7 +231,7 @@ contract CalibreVoucherTest is Test {
         bytes memory sig = _sign(q, signerKey);
         vm.prank(alice);
         vm.expectRevert(CalibreMarket.InsufficientShares.selector);
-        market.buy(q, 100 * unit, sig);
+        market.buy(q, sig);
     }
 
     function test_RevertWhen_SignerUnset() public {
@@ -223,7 +244,7 @@ contract CalibreVoucherTest is Test {
         bytes memory sig = new bytes(65);
         vm.prank(alice);
         vm.expectRevert(CalibreMarket.SignerUnset.selector);
-        fresh.buy(q, 0, sig);
+        fresh.buy(q, sig);
     }
 
     // --- reference-script parity (proves the W3.1 interface) --------------
@@ -264,21 +285,22 @@ contract CalibreVoucherTest is Test {
         uint256 nb = bound(uint256(noBuy), 0, 100);
 
         // Inventory was seeded with 100 sets in setUp. Buy yb YES and nb NO via
-        // vouchers; cost is irrelevant to solvency (USDC just moves buyer->cp),
-        // so use a nominal 1 USDC/share with ample maxCost.
+        // vouchers; the charge (the signed maxCost) is irrelevant to solvency
+        // (USDC just moves buyer->cp), so use a nominal 1 USDC/share. Alice is
+        // funded with 1000 USDC, which covers the worst case (100 + 100 shares).
         uint256 nonce = 0;
         if (yb > 0) {
-            CalibreMarket.Quote memory qy = _quote(1, yb, yb * 2 * unit, nonce, block.timestamp + 30);
+            CalibreMarket.Quote memory qy = _quote(1, yb, yb * unit, nonce, block.timestamp + 30);
             bytes memory sy = _sign(qy, signerKey);
             vm.prank(alice);
-            market.buy(qy, yb * unit, sy);
+            market.buy(qy, sy);
             nonce++;
         }
         if (nb > 0) {
-            CalibreMarket.Quote memory qn = _quote(0, nb, nb * 2 * unit, nonce, block.timestamp + 30);
+            CalibreMarket.Quote memory qn = _quote(0, nb, nb * unit, nonce, block.timestamp + 30);
             bytes memory sn = _sign(qn, signerKey);
             vm.prank(alice);
-            market.buy(qn, nb * unit, sn);
+            market.buy(qn, sn);
         }
 
         CalibreMarket.Outcome outcome = yesWins ? CalibreMarket.Outcome.YES : CalibreMarket.Outcome.NO;
