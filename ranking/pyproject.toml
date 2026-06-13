@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "calibre-ranking"
+version = "0.0.0"
+description = "Pure rank-bucketing lib (skill percentile -> tier) + the canonical gg.calibre.* text-record key schema. Imported by the private calibre app and the ENS gateway tooling. W0 scaffold."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Hansel" }]
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/calibre_ranking"]
