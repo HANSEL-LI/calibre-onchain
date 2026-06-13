@@ -1,60 +1,73 @@
 # calibre_ranking
 
-Pure rank-bucketing library — maps a skill percentile to a tier — plus the
-canonical `gg.calibre.*` ENS text-record key schema.
+Pure, dependency-free library: maps a forecasting **skill percentile** to a named
+**tier**, plus the canonical **`gg.calibre.*` ENS text-record key schema**.
 
 Imported directly by the private calibre app (so tiers are computed with the
-exact bucketing code the judges can read) and used by the ENS gateway to map
-profile fields to text records. **No network, no database, no Discord.** This is
-the real bucketer that #419's interim in-module version is replaced by.
+exact bucketing code the judges can read), by the ENS gateway tooling (so the
+`gg.calibre.rank` record it serves matches), and by the Discord role-sync bot
+(W6.4, so role assignment reads the same keys and tier names).
 
-## The ladder
+No DB, no scoring-pipeline coupling, no numpy. The composite-axis scoring that
+*produces* the percentile (empirical-Bayes shrinkage + a lower-confidence-bound
+sort over the recency-decayed Brier skill score) lives in calibre's
+`leaderboard_scoring.py`; this lib only **buckets** the already-computed result.
 
-Seven named tiers, lowest → highest, percentile-bucketed over the
-**recency-decayed Brier skill score** (`user_calibration_scores` in the private
-app), with the top tier deliberately scarce:
+## Tier ladder (F5)
 
-```
-Static → Hunch → Read → Edge → Sharp → Seer → Oracle
-```
+Deliberately **not** Valorant's rank names — those are Riot IP and collide with a
+user's real in-game rank. Seven tiers over a "higher = better" percentile
+(`1.0` = top forecaster), scarcest last:
 
-A user's tier is a function of their **percentile** among scored peers, not
-their absolute score — so the tier distribution is stable as the score scale
-drifts, and `Oracle` stays a scarce signal (top ~2%).
-
-| Tier | Percentile band |
-|---|---|
-| Static | `[0.00, 0.40)` |
-| Hunch | `[0.40, 0.65)` |
-| Read | `[0.65, 0.82)` |
-| Edge | `[0.82, 0.92)` |
-| Sharp | `[0.92, 0.975)` |
-| Seer | `[0.975, 0.98)` |
-| Oracle | `[0.98, 1.00]` |
-
-## API
+| Tier | Percentile band | Meaning |
+|---|---|---|
+| `Static` | `[0.00, 0.40)` | below median — hasn't beaten the field |
+| `Hunch` | `[0.40, 0.60)` | around median |
+| `Read` | `[0.60, 0.75)` | |
+| `Edge` | `[0.75, 0.90)` | |
+| `Sharp` | `[0.90, 0.97)` | top decile |
+| `Seer` | `[0.97, 0.995)` | top ~3% |
+| `Oracle` | `[0.995, 1.00]` | top ~0.5% — apex, scarce by design |
 
 ```python
-import calibre_ranking as cr
+from calibre_ranking import tier_for_percentile, all_tiers
 
-# Cohort → tiers (None score → "Unranked", excluded from the percentile base).
-cr.bucket({"alice": 0.31, "bob": 0.05, "carol": None})
-# {"alice": "Sharp", "bob": "Static", "carol": "Unranked"}  (illustrative)
-
-# A single percentile → tier.
-cr.tier_for_percentile(0.99)  # "Oracle"
-
-# Canonical ENS text-record keys the rank is published under.
-cr.RANK_KEY           # "gg.calibre.rank"
-cr.CALIBRE_TEXT_KEYS  # ("gg.calibre.rank", "gg.calibre.brier", ...)
+tier_for_percentile(0.95)   # "Sharp"
+tier_for_percentile(0.999)  # "Oracle"
+all_tiers()                 # ["Static", "Hunch", "Read", "Edge", "Sharp", "Seer", "Oracle"]
 ```
 
-The value of `gg.calibre.rank` is one of the ladder tier names above; the W6.4
-Discord bot reads that record back over ENS and maps the tier to a server role.
+`tier_for_percentile(p)` is **pure** and total: a percentile in `[0, 1]` maps to
+the highest tier whose lower bound it clears; out-of-range inputs (float drift)
+**clamp** and `NaN` maps to the floor tier — a resolver must never error on a
+record read.
 
-## Tests
+## Canonical `gg.calibre.*` key schema
 
+The single source of truth for the ENS text-record keys every consumer answers.
+`gg.calibre.*` is calibre's reverse-DNS namespace; `com.discord` is the
+ENS-standard global key (reused so generic clients recognise it).
+
+| Constant | Key | Value |
+|---|---|---|
+| `RANK_KEY` | `gg.calibre.rank` | named tier from `tier_for_percentile` |
+| `BRIER_KEY` | `gg.calibre.brier` | Brier skill score (`1 − brier_avg/0.25`) |
+| `ROI_KEY` | `gg.calibre.roi` | net / lifetime-deployed |
+| `CLAN_KEY` | `gg.calibre.clan` | clan slug (the `<clan>` in `<user>.<clan>.calibre.eth`) |
+| `RIOT_KEY` | `gg.calibre.riot` | Riot ID (RSO-verified where available) |
+| `DISCORD_KEY` | `com.discord` | Discord handle (OAuth-verified) |
+
+```python
+from calibre_ranking import TEXT_KEYS, RANK_KEY
+RANK_KEY in TEXT_KEYS  # True
 ```
-pip install -e ".[test]"
+
+The TypeScript gateway (`gateway/`) can't import this Python module, so it keeps
+its own `TEXT_RECORD_KEYS` map; that map **mirrors this schema** — this module is
+canonical and the gateway's README points here.
+
+## Test
+
+```sh
 python -m pytest tests/
 ```

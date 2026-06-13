@@ -5,19 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "calibre-ranking"
 version = "0.1.0"
-description = "Pure rank-bucketing lib (skill percentile -> tier) + the canonical gg.calibre.* text-record key schema. Imported by the private calibre app and the ENS gateway tooling. W6.4."
+description = "Pure rank-bucketing lib (skill percentile -> tier) + the canonical gg.calibre.* text-record key schema. Imported by the private calibre app and the ENS gateway tooling."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Hansel" }]
 dependencies = []
 
-[project.optional-dependencies]
-test = ["pytest>=8"]
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/calibre_ranking"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

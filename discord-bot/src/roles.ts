@@ -7,9 +7,10 @@
  * their rank and nothing about their open trades.
  */
 
-// The ladder tier names, lowest → highest. Mirrors `calibre_ranking.TIERS`;
-// duplicated here (not imported) because this is the TS service and the lib is
-// Python — the two are kept in sync by the shared schema, asserted in tests.
+// The ladder tier names, lowest → highest. Mirrors the canonical
+// `calibre_ranking.all_tiers()` ladder (#430); duplicated here (not imported)
+// because this is the TS service and the lib is Python — the two are kept in
+// sync by the shared schema, asserted in tests.
 export const LADDER_TIERS = [
   "Static",
   "Hunch",

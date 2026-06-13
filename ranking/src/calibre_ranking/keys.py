@@ -1,43 +1,29 @@
-"""Canonical ``gg.calibre.*`` ENS text-record key schema.
+"""The canonical ``gg.calibre.*`` ENS text-record key schema.
 
-This module is the single source of truth for the text-record keys calibre
-publishes over ENS. The private app writes these keys; the W6.2 gateway answers
-``text(node, key)`` for them; the W6.4 Discord bot reads ``gg.calibre.rank``
-back. Keeping the names here (rather than as scattered string literals) means
-the three sides cannot silently drift.
+Single source of truth for the record keys every consumer reuses. The ENS
+gateway (``gateway/``, TypeScript) cannot import this Python module, so it keeps
+its own ``TEXT_RECORD_KEYS`` map; both READMEs name this module as canonical so
+the two stay in agreement. The Discord role-sync bot (W6.4) reads
+``RANK_KEY`` / ``CLAN_KEY`` from here.
 
-These are *names only* — this lib never fetches a profile or touches a network.
+Keys follow the ENS convention of reverse-DNS namespacing. ``gg.calibre.*`` is
+calibre's own namespace; ``com.discord`` is the ENS-standard global key for a
+Discord handle (reused, not re-namespaced, so generic ENS clients recognise it).
 """
-
 from __future__ import annotations
 
-from typing import Final
+# calibre-owned, reverse-DNS-namespaced record keys.
+RANK_KEY = "gg.calibre.rank"  # named tier from tier_for_percentile (e.g. "Sharp")
+BRIER_KEY = "gg.calibre.brier"  # Brier skill score, 1 - brier_avg/0.25 (>0 beats a coin flip)
+ROI_KEY = "gg.calibre.roi"  # net / lifetime-deployed
+CLAN_KEY = "gg.calibre.clan"  # clan slug (the <clan> label in <user>.<clan>.calibre.eth)
+RIOT_KEY = "gg.calibre.riot"  # Riot ID (RSO-verified where available)
 
-# Reverse-DNS-style namespace for calibre's own records. Standard ENS keys
-# (e.g. ``com.discord``, ``avatar``) keep their conventional names and are not
-# owned by this schema.
-NAMESPACE: Final[str] = "gg.calibre"
+# ENS-standard global key (not re-namespaced) so generic clients recognise it.
+DISCORD_KEY = "com.discord"  # Discord handle (OAuth-verified)
 
-# The rank/tier record the Discord role-sync reads. Its value is one of the
-# ladder tier names (see ``ladder.TIERS``).
-RANK_KEY: Final[str] = "gg.calibre.rank"
-
-# The recency-decayed Brier skill score the rank is bucketed from (informational
-# record; the bot does not need it).
-BRIER_KEY: Final[str] = "gg.calibre.brier"
-
-# Lifetime return on deployed points (informational).
-ROI_KEY: Final[str] = "gg.calibre.roi"
-
-# Riot identity + clan membership (informational identity records).
-RIOT_KEY: Final[str] = "gg.calibre.riot"
-CLAN_KEY: Final[str] = "gg.calibre.clan"
-
-# The full set of calibre-owned text-record keys, in publish order.
-CALIBRE_TEXT_KEYS: Final[tuple[str, ...]] = (
-    RANK_KEY,
-    BRIER_KEY,
-    ROI_KEY,
-    RIOT_KEY,
-    CLAN_KEY,
+# The canonical set the gateway is expected to answer. Frozen so a consumer can
+# membership-test without mutating it.
+TEXT_KEYS: frozenset[str] = frozenset(
+    {RANK_KEY, BRIER_KEY, ROI_KEY, CLAN_KEY, RIOT_KEY, DISCORD_KEY}
 )

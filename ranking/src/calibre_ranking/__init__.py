@@ -1,52 +1,36 @@
-"""calibre_ranking — skill-percentile → tier bucketing + ``gg.calibre.*`` keys.
+"""calibre_ranking — skill-percentile -> tier bucketing + gg.calibre.* key schema.
 
-Pure, dependency-light library. Two responsibilities (W6.4 / #431):
+Pure, dependency-free library imported by both the private calibre app (so tiers
+are computed with the exact code the judges can read) and the ENS gateway tooling
+/ Discord role-sync bot (so every consumer agrees on the tier names and the
+canonical ``gg.calibre.*`` record keys).
 
-- ``ladder`` — the seven-tier rank ladder (``Static → Hunch → Read → Edge →
-  Sharp → Seer → Oracle``), percentile-bucketed over the recency-decayed Brier
-  skill score, top tier scarce. The *real* bucketer #419's interim version is
-  replaced by; imported directly by the private app so tiers are computed with
-  the exact code judges can read.
-- ``keys`` — the canonical ``gg.calibre.*`` ENS text-record key schema the
-  private app writes, the W6.2 gateway answers, and the W6.4 Discord bot reads.
-
-Touches no network, no database, no Discord.
+- ``tier_for_percentile(p)`` / ``all_tiers()`` — the F5 tier ladder.
+- ``TEXT_KEYS`` + the named ``*_KEY`` constants — the canonical record schema.
 """
-
 from __future__ import annotations
 
 from .keys import (
     BRIER_KEY,
-    CALIBRE_TEXT_KEYS,
     CLAN_KEY,
-    NAMESPACE,
+    DISCORD_KEY,
     RANK_KEY,
     RIOT_KEY,
     ROI_KEY,
+    TEXT_KEYS,
 )
-from .ladder import (
-    CUTPOINTS,
-    TIERS,
-    UNRANKED,
-    bucket,
-    tier_for_percentile,
-)
+from .tiers import all_tiers, tier_for_percentile
 
 __version__ = "0.1.0"
 
 __all__ = [
-    # ladder
-    "TIERS",
-    "UNRANKED",
-    "CUTPOINTS",
     "tier_for_percentile",
-    "bucket",
-    # keys
-    "NAMESPACE",
+    "all_tiers",
+    "TEXT_KEYS",
     "RANK_KEY",
     "BRIER_KEY",
     "ROI_KEY",
-    "RIOT_KEY",
     "CLAN_KEY",
-    "CALIBRE_TEXT_KEYS",
+    "RIOT_KEY",
+    "DISCORD_KEY",
 ]
