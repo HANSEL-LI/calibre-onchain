@@ -72,6 +72,7 @@ contract CalibreMarket {
     error NotResolved();
     error NothingToRedeem();
     error InsufficientShares();
+    error UsdcTransferFailed();
 
     modifier onlyResolver() {
         if (msg.sender != resolver) revert NotResolver();
@@ -111,9 +112,9 @@ contract CalibreMarket {
         if (sets == 0) revert ZeroSets();
 
         // We must receive funds before crediting, so pull then credit.
-        // transferFrom reverts on failure (and under Arc's forbidden-target
+        // _safeTransferFrom reverts on failure (and under Arc's forbidden-target
         // rules), so a credit only ever follows a real receipt.
-        usdc.transferFrom(msg.sender, address(this), sets * usdcUnit);
+        _safeTransferFrom(msg.sender, address(this), sets * usdcUnit);
 
         yesBalance[chainMarketId][msg.sender] += sets;
         noBalance[chainMarketId][msg.sender] += sets;
@@ -160,7 +161,20 @@ contract CalibreMarket {
 
         winning[msg.sender] = 0;
         uint256 usdcOut = shares * usdcUnit;
-        usdc.transfer(msg.sender, usdcOut);
+        _safeTransfer(msg.sender, usdcOut);
         emit Redeemed(chainMarketId, msg.sender, shares, usdcOut);
+    }
+
+    /// @dev Wrap `IERC20.transfer` to honor both reverting and false-returning
+    ///      ERC-20 implementations. Arc USDC reverts on failure; checking the
+    ///      boolean return value is defensive and silences the unchecked-transfer
+    ///      lint. A `false` return is treated as failure.
+    function _safeTransfer(address to, uint256 amount) internal {
+        if (!usdc.transfer(to, amount)) revert UsdcTransferFailed();
+    }
+
+    /// @dev See `_safeTransfer`; pulls `amount` from `from` to this contract.
+    function _safeTransferFrom(address from, address to, uint256 amount) internal {
+        if (!usdc.transferFrom(from, to, amount)) revert UsdcTransferFailed();
     }
 }
