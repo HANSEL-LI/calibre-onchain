@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   type Hex,
   decodeAbiParameters,
+  decodeFunctionResult,
   encodeFunctionData,
   parseAbi,
   toHex,
@@ -128,4 +129,15 @@ test("unset record on an opted-in profile resolves to empty", async () => {
     stubClient({ demo: noLinks }),
   );
   assert.equal(unwrapText(result), "");
+});
+
+test("addr() result decodes the way a real ENS client does (no extra wrap)", async () => {
+  // Guards interop against the gateway's own unwrap helpers: a real client peels
+  // resolve()'s declared `bytes` return, then decodes those bytes as addr()'s
+  // return. This must equal the wallet address with no double-wrap.
+  const inner = encodeFunctionData({ abi: RECORD_ABI, functionName: "addr", args: [NODE] });
+  const { result } = await handleResolve(resolveCall("demo.calibre.eth", inner), stubClient({ demo: DEMO }));
+  const peeled = decodeFunctionResult({ abi: RESOLVE_ABI, functionName: "resolve", data: result }) as Hex;
+  const addr = decodeFunctionResult({ abi: RECORD_ABI, functionName: "addr", data: peeled });
+  assert.equal(String(addr).toLowerCase(), DEMO.wallet_address!.toLowerCase());
 });
