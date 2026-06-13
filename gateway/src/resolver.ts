@@ -50,8 +50,20 @@ export function decodeDnsName(encoded: Hex): string {
 }
 
 /**
- * The calibre display_name a subname resolves to: the leftmost label.
- * `demo.calibre.eth` → "demo". Clan-nested names (W6.3) are out of scope here.
+ * The calibre display_name a subname resolves to: always the **leftmost** label.
+ *
+ *   demo.calibre.eth          → "demo"   (flat user subname)
+ *   demo.sharks.calibre.eth   → "demo"   (clan-nested, W6.3 / overview F4)
+ *
+ * Clan nesting (`<user>.<clan>.calibre.eth`) is an addressing convenience: the
+ * `<clan>` label is namespacing, not a second DB lookup, so a nested name
+ * resolves the *user* leaf exactly as the flat form does. A bare clan name
+ * (`sharks.calibre.eth`) is structurally identical to a flat user subname, so it
+ * is looked up as a user — there is no clan-aggregate profile endpoint in Seam 2
+ * this weekend, so a non-profile clan label simply yields the empty record (no
+ * enumeration oracle, same as any unknown name). The clan-membership cross-check
+ * is a W6.4 concern once a clan endpoint exists.
+ *
  * Returns null for the bare parent (`calibre.eth`) — nothing to resolve.
  */
 export function displayNameFor(name: string): string | null {

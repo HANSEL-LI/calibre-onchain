@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibre-ranking"
-version = "0.0.0"
-description = "Pure rank-bucketing lib (skill percentile -> tier) + the canonical gg.calibre.* text-record key schema. Imported by the private calibre app and the ENS gateway tooling. W0 scaffold."
+version = "0.1.0"
+description = "Pure rank-bucketing lib (skill percentile -> tier) + the canonical gg.calibre.* text-record key schema. Imported by the private calibre app and the ENS gateway tooling."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }

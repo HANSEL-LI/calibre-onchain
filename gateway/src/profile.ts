@@ -24,7 +24,7 @@ export interface PublicProfile {
 
 /**
  * The canonical ENS text-record keys this gateway answers, mapped to the
- * profile fields they read. W6.4's `ranking/` lib owns the canonical schema;
+ * profile fields they read. The `ranking/` lib owns the canonical schema;
  * this is the gateway's view of it. Null source values → the record is unset
  * (answered as ""), which is indistinguishable from "never set".
  */
