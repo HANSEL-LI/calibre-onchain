@@ -88,7 +88,9 @@ export async function handleResolve(callData: Hex, profiles: ProfileClient): Pro
       const wantsCoinType = inner.args.length === 2;
       const coinType = wantsCoinType ? (inner.args[1] as bigint) : ETH_COIN_TYPE;
       const raw = profile ? addrRecord(profile) : "";
-      const valid = raw && isAddress(raw) && coinType === ETH_COIN_TYPE;
+      // Accept non-checksummed addresses (the DB may store lowercase); getAddress
+      // normalizes below. coinType != 60 (non-ETH) is unset for this gateway.
+      const valid = !!raw && isAddress(raw, { strict: false }) && coinType === ETH_COIN_TYPE;
 
       if (!wantsCoinType) {
         const addr = valid ? getAddress(raw) : ZERO_ADDRESS;

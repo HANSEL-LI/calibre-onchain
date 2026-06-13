@@ -10,7 +10,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "test": "tsc --noEmit && node --test --import tsx test/"
+    "test": "tsc --noEmit -p tsconfig.test.json && node --test --import tsx \"test/**/*.test.ts\""
   },
   "dependencies": {
     "express": "^4.19.2",
