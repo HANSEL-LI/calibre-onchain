@@ -217,6 +217,21 @@ contract CalibreMarketTest is Test {
             market.redeem(MARKET_ID);
         }
         _assertSolvent(yesWins);
+
+        // After BOTH holders redeem, the contract must hold EXACTLY the locked
+        // backing for the (now zero) outstanding winning shares — i.e. it drains
+        // to 0. A tight upper-bound check: redeem never pays out more than the
+        // USDC locked at mint (an over-redeem bug would leave a negative residual
+        // / underflow-revert here, which the loose `>=` solvency check would miss
+        // for the final redeemer).
+        address other = aliceRedeems ? bob : alice;
+        uint256 otherShares = yesWins ? market.yesBalance(MARKET_ID, other) : market.noBalance(MARKET_ID, other);
+        if (otherShares > 0) {
+            vm.prank(other);
+            market.redeem(MARKET_ID);
+        }
+        _assertSolvent(yesWins);
+        assertEq(usdc.balanceOf(address(market)), 0, "fully drained after all winners redeem");
     }
 
     /// @dev contract USDC balance >= sum of outstanding winning shares * unit.
