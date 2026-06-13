@@ -2,6 +2,7 @@ name: contracts
 
 on:
   push:
+    branches: [main]
     paths:
       - "contracts/**"
       - ".github/workflows/contracts.yml"
