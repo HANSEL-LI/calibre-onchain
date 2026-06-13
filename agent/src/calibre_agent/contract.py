@@ -1,19 +1,25 @@
 """MarketClient — the agent's on-chain leg against the Arc ``CalibreMarket``.
 
-The merged contract is **W1.1** (``contracts/src/CalibreMarket.sol``): the
-custody-independent core. Its EIP-712 voucher buy/redeem path is **W1.2 (#422),
-not yet merged**, so the trade surface a non-resolver agent can drive today is:
+The contract is ``contracts/src/CalibreMarket.sol`` — the W1.1 custody-independent
+core plus the merged **W1.2 (#422)** EIP-712 voucher extension. The agent's making
+leg is now the **voucher buy** (``buy(quote, cost, sig)``, #444); the W1.1
+complete-set ``mint`` is retained as a primitive but no longer the making venue.
+The trade surface this client drives:
 
-- ``mint(chainMarketId, sets)`` — pull ``sets * usdcUnit`` USDC (ERC-20,
-  6-decimal), credit ``sets`` YES + ``sets`` NO (a complete set).
-- ``transferShares(chainMarketId, isYes, to, amount)`` — move one side.
+- ``buy(quote, cost, sig)`` — submit a backend-signed EIP-712 voucher (W1.2): the
+  agent (the buyer) takes ``size`` shares of one side from calibre's
+  standing-counterparty inventory against a ``cost <= maxCost`` USDC pull.
 - ``redeem(chainMarketId)`` — after resolve, redeem the winning side 1:1.
-- views: ``markets(id)`` (exists, outcome), ``yesBalance``/``noBalance``.
+- ``mint(chainMarketId, sets)`` — W1.1 complete-set mint (retained primitive).
+- ``transferShares(chainMarketId, isYes, to, amount)`` — move one side.
+- views: ``markets(id)`` (exists, outcome), ``yesBalance``/``noBalance``,
+  ``nonces(buyer)`` (the buyer's monotonic voucher nonce).
 
 The merged ``sdk`` only encodes ``createMarket``/``resolve`` (the resolver seam),
 so the agent carries its own minimal ABI for these caller-facing primitives plus
-the ERC-20 USDC slice it needs to approve spending. When W1.2 lands, ``mint`` is
-swapped for a voucher-buy with no change to the loop (see the README).
+the ERC-20 USDC slice it needs to approve spending. The voucher itself is signed
+by calibre (``voucherSigner``); the agent obtains it via a
+:class:`~calibre_agent.voucher.VoucherSource` and submits it under its own key.
 
 USDC decimals (W8 spike §3): Arc's native USDC is 18-decimal but the **ERC-20**
 interface is 6-decimal; ``usdcUnit`` is read from the contract, which reads it
@@ -35,6 +41,30 @@ _MARKET_ABI = [
         "inputs": [{"name": "chainMarketId", "type": "uint256"},
                    {"name": "sets", "type": "uint256"}],
         "outputs": [],
+    },
+    {
+        # W1.2 EIP-712 voucher buy: buy(Quote q, uint256 cost, bytes sig). The
+        # tuple field order is the FROZEN Quote struct (CalibreMarket.sol).
+        "type": "function", "name": "buy", "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "q", "type": "tuple", "components": [
+                {"name": "marketId", "type": "uint256"},
+                {"name": "buyer", "type": "address"},
+                {"name": "side", "type": "uint8"},
+                {"name": "size", "type": "uint256"},
+                {"name": "maxCost", "type": "uint256"},
+                {"name": "nonce", "type": "uint256"},
+                {"name": "expiry", "type": "uint256"},
+            ]},
+            {"name": "cost", "type": "uint256"},
+            {"name": "sig", "type": "bytes"},
+        ],
+        "outputs": [],
+    },
+    {
+        "type": "function", "name": "nonces", "stateMutability": "view",
+        "inputs": [{"name": "", "type": "address"}],
+        "outputs": [{"name": "", "type": "uint256"}],
     },
     {
         "type": "function", "name": "transferShares", "stateMutability": "nonpayable",
@@ -125,11 +155,12 @@ class MarketClient:
     """
 
     def __init__(self, *, rpc_url: str, chain_id: int, contract_address: str,
-                 signer, usdc_address: str = "") -> None:
+                 signer, usdc_address: str = "", voucher_source=None) -> None:
         from web3 import Web3
 
         self._signer = signer
         self._chain_id = chain_id
+        self._voucher_source = voucher_source
         self._w3 = Web3(Web3.HTTPProvider(rpc_url))
         self._market = self._w3.eth.contract(
             address=Web3.to_checksum_address(contract_address), abi=_MARKET_ABI
@@ -146,6 +177,11 @@ class MarketClient:
     @property
     def address(self) -> str:
         return self._signer.address
+
+    def set_voucher_source(self, voucher_source) -> None:
+        """Attach the voucher source used by :meth:`buy`. Set post-construction
+        because building a local signer needs ``usdc_unit`` (read from chain)."""
+        self._voucher_source = voucher_source
 
     def view(self, market_id: int) -> MarketView:
         """Read the agent's state for ``market_id`` (no tx)."""
@@ -186,8 +222,48 @@ class MarketClient:
         return self._send(self._usdc.functions.approve(spender, need))
 
     def mint(self, market_id: int, sets: int) -> str:
-        """Mint ``sets`` complete sets; returns the tx hash."""
+        """Mint ``sets`` complete sets; returns the tx hash.
+
+        Retained as a W1.1 primitive; the agent's making leg is now ``buy`` (the
+        W1.2 voucher path). Kept for the redeem-side approve math + manual use.
+        """
         return self._send(self._market.functions.mint(int(market_id), int(sets)))
+
+    def nonce_of(self, buyer: str) -> int:
+        """The buyer's current monotonic voucher nonce (the next valid one)."""
+        return int(self._market.functions.nonces(buyer).call())
+
+    def buy(self, market_id: int, *, side: int, size: int,
+            price_yes_micro: int) -> str:
+        """Buy ``size`` shares of ``side`` via a W1.2 EIP-712 voucher; returns the
+        tx hash. The agent is the buyer: it reads its on-chain nonce, obtains a
+        voucher signed by calibre's ``voucherSigner`` from the configured
+        :class:`~calibre_agent.voucher.VoucherSource`, then submits
+        ``buy(quote, cost, sig)`` under its own tx-signing identity.
+
+        ``side`` is 0=NO / 1=YES; ``price_yes_micro`` is the public prior the
+        voucher source prices/bounds the cost against. Replaces the ``mint`` leg
+        (#444); the strategy + loop control flow are unchanged.
+        """
+        if self._voucher_source is None:
+            raise RuntimeError(
+                "no voucher source configured on MarketClient; cannot buy"
+            )
+        buyer = self._signer.address
+        nonce = self.nonce_of(buyer)
+        voucher = self._voucher_source.fetch(
+            market_id=int(market_id), side=int(side), size=int(size),
+            buyer=buyer, nonce=nonce, price_yes_micro=int(price_yes_micro),
+        )
+        q = voucher.quote
+        # Assemble the Quote tuple in the contract's frozen field order.
+        quote_tuple = (
+            int(q["marketId"]), q["buyer"], int(q["side"]), int(q["size"]),
+            int(q["maxCost"]), int(q["nonce"]), int(q["expiry"]),
+        )
+        return self._send(self._market.functions.buy(
+            quote_tuple, int(voucher.cost), voucher.signature
+        ))
 
     def redeem(self, market_id: int) -> str:
         """Redeem the winning side after resolve; returns the tx hash."""
