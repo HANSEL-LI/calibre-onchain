@@ -21,7 +21,7 @@ gateway ──► { data: abi.encode(bytes result, uint64 expires, bytes sig) }
 client ──resolveWithProof──► resolver verifies the signer ──► record
 ```
 
-The gateway parses the leftmost label of the subname as the calibre
+The gateway parses the **leftmost** label of the subname as the calibre
 `display_name`, fetches `GET {CALIBRE_PUBLIC_API_BASE}/profiles/{name}`, encodes
 the record answer, and signs it with `GATEWAY_SIGNER_KEY` per the
 `ensdomains/offchain-resolver` scheme:
@@ -31,7 +31,29 @@ sig over keccak256(abi.encodePacked(
   0x1900, target, expires:uint64, keccak256(request), keccak256(result)))
 ```
 
+## Name shapes
+
+| Name | Resolves to |
+|---|---|
+| `demo.calibre.eth` | the `demo` user profile (flat subname) |
+| `demo.sharks.calibre.eth` | the `demo` user profile (clan-nested, W6.3 / F4) |
+| `sharks.calibre.eth` | a `sharks` user lookup (no clan-aggregate endpoint yet) |
+| `calibre.eth` | nothing (bare parent) |
+
+Clan nesting (`<user>.<clan>.calibre.eth`) is an **addressing convenience**: the
+`<clan>` label is namespacing, so the leftmost label is always the calibre
+`display_name` and a nested name resolves the same user as the flat form. There
+is no clan-aggregate profile in Seam 2 this weekend, so a bare clan name is
+looked up as a user and yields the empty record for a non-profile label — the
+same indistinguishable empty answer as any unknown name (no enumeration oracle).
+The clan-membership cross-check is a W6.4 concern.
+
 ## Record-key mapping (profile JSON → ENS records)
+
+The canonical `gg.calibre.*` key schema is owned by
+[`../ranking/`](../ranking/) (`calibre_ranking.TEXT_KEYS`). This TypeScript
+gateway can't import that Python module, so it keeps its own
+`TEXT_RECORD_KEYS` map (in `src/profile.ts`) which **mirrors** that schema.
 
 The profile API returns
 `{ display_name, tier, brier_skill, roi, pnl, wallet_address, discord_handle, riot_id, clan }`.
