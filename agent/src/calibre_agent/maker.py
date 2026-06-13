@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .config import AgentConfig
-from .contract import MarketView
+from .contract import OUTCOME_YES, MarketView
 
 
 class ActionKind(str, Enum):
@@ -48,7 +48,7 @@ def decide(config: AgentConfig, price_yes: int, view: MarketView) -> Action:
     prior in micro-cents; ``view`` is the agent's on-chain state."""
     # 1) resolved → redeem any winnings, else nothing to do.
     if view.resolved:
-        winning = view.yes_shares if view.outcome == 1 else view.no_shares
+        winning = view.yes_shares if view.outcome == OUTCOME_YES else view.no_shares
         if winning > 0:
             return Action(ActionKind.REDEEM, reason="market resolved; redeeming winnings")
         return Action(ActionKind.HOLD, reason="resolved; no winning shares")
