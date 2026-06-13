@@ -1,0 +1,29 @@
+"""The canonical ``gg.calibre.*`` ENS text-record key schema.
+
+Single source of truth for the record keys every consumer reuses. The ENS
+gateway (``gateway/``, TypeScript) cannot import this Python module, so it keeps
+its own ``TEXT_RECORD_KEYS`` map; both READMEs name this module as canonical so
+the two stay in agreement. The Discord role-sync bot (W6.4) reads
+``RANK_KEY`` / ``CLAN_KEY`` from here.
+
+Keys follow the ENS convention of reverse-DNS namespacing. ``gg.calibre.*`` is
+calibre's own namespace; ``com.discord`` is the ENS-standard global key for a
+Discord handle (reused, not re-namespaced, so generic ENS clients recognise it).
+"""
+from __future__ import annotations
+
+# calibre-owned, reverse-DNS-namespaced record keys.
+RANK_KEY = "gg.calibre.rank"  # named tier from tier_for_percentile (e.g. "Sharp")
+BRIER_KEY = "gg.calibre.brier"  # Brier skill score, 1 - brier_avg/0.25 (>0 beats a coin flip)
+ROI_KEY = "gg.calibre.roi"  # net / lifetime-deployed
+CLAN_KEY = "gg.calibre.clan"  # clan slug (the <clan> label in <user>.<clan>.calibre.eth)
+RIOT_KEY = "gg.calibre.riot"  # Riot ID (RSO-verified where available)
+
+# ENS-standard global key (not re-namespaced) so generic clients recognise it.
+DISCORD_KEY = "com.discord"  # Discord handle (OAuth-verified)
+
+# The canonical set the gateway is expected to answer. Frozen so a consumer can
+# membership-test without mutating it.
+TEXT_KEYS: frozenset[str] = frozenset(
+    {RANK_KEY, BRIER_KEY, ROI_KEY, CLAN_KEY, RIOT_KEY, DISCORD_KEY}
+)
