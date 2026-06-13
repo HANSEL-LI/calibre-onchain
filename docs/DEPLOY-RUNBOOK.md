@@ -44,6 +44,12 @@ demo, but keep the resolver key throwaway):
 
 Fund from the Circle faucet (`https://faucet.circle.com`). Record each address.
 
+> **Gas is paid in USDC on Arc** — there is no separate native gas token to
+> chase. A single USDC drip to an address covers both its backing role *and* its
+> transaction gas; the deployer/resolver, which only sends admin txs, just needs
+> a small USDC balance for gas. (`cast balance` shows an 18-dec native mirror of
+> the same USDC; amounts in the contract are always the 6-dec ERC-20 — §0.)
+
 ---
 
 ## 2. Deploy `CalibreMarket` to Arc
@@ -252,6 +258,15 @@ deltas at each money step** (read balances on `https://testnet.arcscan.app` or v
       (locked USDC exactly backed the minted pairs). `EndToEnd.s.sol` asserts this
       shape for a fresh deploy; confirm it holds live.
 
+> **Driving a live round-trip:** `forge script` against Arc reverts on any
+> `transferFrom`-bearing step — its local fork can't execute Arc's
+> `isBlocklisted` precompile (`0x1800…0001`), so seed/buy/redeem fail in
+> simulation (`StackUnderflow`) even though they succeed on real broadcast. Use
+> **`cast send`** for the live settlement steps (see
+> [`contracts/live-proof.sh`](../contracts/live-proof.sh), the deployer-wears-all-roles
+> round-trip). `EndToEnd.s.sol` in **LOCAL** mode (MockUSDC, no Arc precompile)
+> remains the deterministic set-order + solvency proof.
+
 ---
 
 ## 11. On failure
@@ -266,6 +281,8 @@ after the fix lands; step 7 and the hero-flow checklist are both idempotent.
 ## Reference
 
 - Set-order + solvency proof: [`contracts/script/EndToEnd.s.sol`](../contracts/script/EndToEnd.s.sol)
+- One-shot testnet deploy: [`contracts/deploy-testnet.sh`](../contracts/deploy-testnet.sh) (preflight + `Deploy.s.sol` + writes `CALIBRE_MARKET_ADDRESS`)
+- Live settlement round-trip (cast send): [`contracts/live-proof.sh`](../contracts/live-proof.sh)
 - EIP-712 surface: [`contracts/src/CalibreMarket.sol`](../contracts/src/CalibreMarket.sol) `hashQuote`, [`agent/src/calibre_agent/voucher.py`](../agent/src/calibre_agent/voucher.py)
 - Digest re-confirm: [`agent/scripts/verify_deployed_digest.py`](../agent/scripts/verify_deployed_digest.py)
 - ENS gateway: [`gateway/README.md`](../gateway/README.md)
