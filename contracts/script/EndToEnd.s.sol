@@ -198,7 +198,7 @@ contract EndToEnd is Script {
             buyer: buyer,
             side: side,
             size: size,
-            maxCost: cost, // signed slippage ceiling; cost == maxCost here
+            maxCost: cost, // the signed charge `buy` pulls (cost == maxCost)
             nonce: nonce,
             // A generous absolute expiry. The backend signer's real policy is
             // ~30s (W8 §5) and is unit-tested in CalibreVoucher.t.sol; a `forge
@@ -214,6 +214,6 @@ contract EndToEnd is Script {
         bytes memory sig = abi.encodePacked(r, s, v);
 
         vm.broadcast(BUYER_KEY);
-        market.buy(q, cost, sig);
+        market.buy(q, sig);
     }
 }

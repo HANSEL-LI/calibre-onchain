@@ -262,7 +262,7 @@ contract CalibreMarket {
         address buyer; // the only address allowed to redeem this voucher (== msg.sender)
         uint8 side; // 0 = NO, 1 = YES
         uint256 size; // shares to credit the buyer
-        uint256 maxCost; // signed slippage ceiling, 6-dec USDC; pulled cost must be <=
+        uint256 maxCost; // the signed USDC charge (6-dec); `buy` pulls exactly this
         uint256 nonce; // per-buyer monotonic; replay protection
         uint256 expiry; // unix ts; signer sets <=30s out (W8 §5); contract checks < expiry
     }
@@ -286,7 +286,6 @@ contract CalibreMarket {
     error VoucherExpired();
     error BadNonce();
     error WrongBuyer();
-    error MaxCostExceeded();
     error BadSignature();
     error NotionalCapExceeded();
 
@@ -348,15 +347,21 @@ contract CalibreMarket {
 
     /// @notice Execute a backend-signed price voucher: verify the EIP-712
     ///         signature against `voucherSigner`, enforce buyer / expiry /
-    ///         monotonic nonce / `maxCost` / optional notional cap, then pull
-    ///         `cost` USDC from the buyer to `counterparty` and transfer `q.size`
-    ///         shares of the signed side from counterparty inventory to the buyer.
-    /// @param  q    the signed quote.
-    /// @param  cost the USDC (6-dec base units) actually charged; must be
-    ///              `<= q.maxCost`. The off-chain LMSR sets it ≤ the quoted price;
-    ///              `maxCost` (= quote × 1.01, W8 §5) is the signed leak ceiling.
-    /// @param  sig  the 65-byte ECDSA signature over `hashQuote(q)`.
-    function buy(Quote calldata q, uint256 cost, bytes calldata sig) external {
+    ///         monotonic nonce / optional notional cap, then pull exactly
+    ///         `q.maxCost` USDC from the buyer to `counterparty` and transfer
+    ///         `q.size` shares of the signed side from counterparty inventory to
+    ///         the buyer.
+    /// @dev    The charge is the signed `q.maxCost` itself — there is no separate
+    ///         unsigned `cost` argument. An unsigned, caller-supplied `cost`
+    ///         (previously only upper-bounded by `maxCost`) let a voucher holder
+    ///         pay below fair price — even `0` — and drain seeded counterparty
+    ///         inventory (#465). Charging the signed amount removes that lower-
+    ///         bound gap entirely without disturbing the frozen Quote typehash:
+    ///         the signer simply sets `maxCost` to the exact price it intends to
+    ///         charge.
+    /// @param  q   the signed quote; `q.maxCost` is the USDC (6-dec) charged.
+    /// @param  sig the 65-byte ECDSA signature over `hashQuote(q)`.
+    function buy(Quote calldata q, bytes calldata sig) external {
         if (voucherSigner == address(0)) revert SignerUnset();
         if (counterparty == address(0)) revert CounterpartyUnset();
         if (!markets[q.marketId].exists) revert UnknownMarket();
@@ -365,7 +370,9 @@ contract CalibreMarket {
         if (msg.sender != q.buyer) revert WrongBuyer();
         if (block.timestamp >= q.expiry) revert VoucherExpired();
         if (q.nonce != nonces[q.buyer]) revert BadNonce();
-        if (cost > q.maxCost) revert MaxCostExceeded();
+
+        // The charge is the signed amount; the buyer cannot underpay (#465).
+        uint256 cost = q.maxCost;
 
         // Verify the voucher signature BEFORE any state change.
         if (_recover(hashQuote(q), sig) != voucherSigner) revert BadSignature();
