@@ -66,6 +66,21 @@ The TypeScript gateway (`gateway/`) can't import this Python module, so it keeps
 its own `TEXT_RECORD_KEYS` map; that map **mirrors this schema** — this module is
 canonical and the gateway's README points here.
 
+### Drift check (#445)
+
+The two sides can't share a runtime import, so the schema is bridged by a
+committed `keys.json` fixture generated from `keys.py`:
+
+```sh
+python scripts/emit_keys_json.py          # regenerate keys.json after a key change
+python scripts/emit_keys_json.py --check  # CI-style staleness check
+```
+
+`tests/test_keys_fixture.py` asserts the committed `keys.json` matches `keys.py`
+(so the fixture can't silently drift from the canonical set), and the gateway's
+`test/keys-schema.test.ts` asserts its `TEXT_RECORD_KEYS` set-equals the same
+fixture — closing the loop `keys.py → keys.json → TEXT_RECORD_KEYS`.
+
 ## Test
 
 ```sh
