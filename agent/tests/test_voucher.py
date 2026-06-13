@@ -125,12 +125,13 @@ def test_local_signer_cost_within_maxcost_and_priced_by_side():
     signer = LocalVoucherSigner(signer_key=key, chain_id=CHAIN_ID,
                                 verifying_contract=VERIFYING, usdc_unit=unit,
                                 now=lambda: 0)
-    # YES at 6000 micro = 0.60 prob; 10 shares => 6 USDC; maxCost = 6.06.
+    # YES at 6000 micro = 0.60 prob; 10 shares => 6 USDC. The contract charges
+    # the signed maxCost (#465), so maxCost == cost — the buyer pays exactly 6.
     yes = signer.fetch(market_id=42, side=OUTCOME_YES, size=10, buyer=VERIFYING,
                        nonce=0, price_yes_micro=6000)
     assert yes.cost == 6 * unit
-    assert yes.quote["maxCost"] == 606 * unit // 100
-    assert yes.cost <= yes.quote["maxCost"]
+    assert yes.quote["maxCost"] == 6 * unit
+    assert yes.cost == yes.quote["maxCost"]
     # NO side prices off (1 - prior): NO at 6000 prior = 0.40 => 4 USDC for 10.
     no = signer.fetch(market_id=42, side=OUTCOME_NO, size=10, buyer=VERIFYING,
                       nonce=0, price_yes_micro=6000)
@@ -141,7 +142,8 @@ def test_cost_and_maxcost_helper():
     cost, max_cost = _cost_and_maxcost(side=1, size=10, price_yes_micro=5000,
                                        usdc_unit=1_000_000)
     assert cost == 5_000_000  # 0.50 * 10 * 1e6
-    assert max_cost == cost * 10_100 // 10_000
+    # maxCost == cost: the contract charges the signed maxCost (#465), no buffer.
+    assert max_cost == cost
 
 
 # --- build_voucher_source selection -----------------------------------------
@@ -257,12 +259,13 @@ def test_buy_reads_nonce_and_submits_voucher():
     assert src.fetched["nonce"] == 3
     assert src.fetched["buyer"] == _FakeSigner.address
     assert src.fetched["side"] == OUTCOME_YES
-    # buy() was called with (quote_tuple, cost, sig) in the frozen field order.
+    # buy() was called with (quote_tuple, sig) — no unsigned cost arg (#465);
+    # the contract charges the signed maxCost in the quote tuple.
     buy_calls = [c for c in rec.calls if c[0] == "buy"]
     assert len(buy_calls) == 1
-    quote_tuple, cost, sig = buy_calls[0][1]
+    quote_tuple, sig = buy_calls[0][1]
     assert quote_tuple == (42, _FakeSigner.address, OUTCOME_YES, 10, 999, 3, 123)
-    assert cost == 500 and sig == b"\x01" * 65
+    assert sig == b"\x01" * 65
     assert tx_hash  # a hex string from the fake tx hash
 
 

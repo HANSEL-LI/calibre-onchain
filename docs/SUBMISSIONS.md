@@ -109,7 +109,7 @@ and [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) §4.
 calibre-onchain #5, W1.2/#422), `contracts/test/CalibreVoucher.t.sol`; private
 signer `src/calibre/markets/onchain_voucher.py` (calibre PR #443, W3.1/#424).
 
-🔌 `[OWNER-FILL: a signed buy(quote, cost, sig) tx hash on Arc testnet]`.
+🔌 `[OWNER-FILL: a signed buy(quote, sig) tx hash on Arc testnet]`.
 
 ---
 
@@ -126,7 +126,7 @@ private bot fleet (whose archetype bodies stay closed).
 - It signs and broadcasts via a **Dynamic server wallet** (the bounty path) with
   a local-key testnet fallback; both yield raw signed bytes, so the loop is
   signer-agnostic.
-- Its making leg uses the W1.2 voucher `buy(quote, cost, sig)` path (swapped from
+- Its making leg uses the W1.2 voucher `buy(quote, sig)` path (swapped from
   mint-based after #422 merged), with `hashQuote` digest parity verified by forge.
 - **Safety rails:** dry-run defaults ON; spend is hard-bounded by an inventory
   cap; a kill switch halts it — a bad signal is bounded.
