@@ -12,7 +12,7 @@
 /** The Seam 2 public profile card. Every field except display_name/tier nullable. */
 export interface PublicProfile {
   display_name: string;
-  tier: string; // coarse rank label, e.g. "unranked" | "diamond" | "grandmaster"
+  tier: string; // coarse rank label from the calibre ladder, floor→top: "Static" | "Hunch" | "Read" | "Edge" | "Sharp" | "Seer" | "Oracle"
   brier_skill: number | null; // 1 − brier_avg/0.25; >0 beats a coin-flip
   roi: number | null; // net / lifetime-deployed; null below the deployed floor
   pnl: number | null; // net P&L in base units (÷10_000 = points); null if never traded
