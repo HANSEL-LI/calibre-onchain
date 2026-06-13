@@ -106,6 +106,11 @@ The settlement core (W1.1) deploys to **Arc testnet** (chainId **5042002**, RPC
 faucet `https://faucet.circle.com`). USDC accounting goes through the **6-decimal
 ERC-20** interface — Arc's native 18-decimal USDC gas asset is never touched.
 
+For the full owner-gated live deploy — every env var/key/address, the exact admin
+set-order, the EIP-712 digest re-confirmation, and the hero-flow proof checklist —
+follow [`docs/DEPLOY-RUNBOOK.md`](docs/DEPLOY-RUNBOOK.md). The quick deploy below is
+just step 2 of that runbook.
+
 ```bash
 cd contracts
 export USDC_ADDRESS=0x...          # 6-dec ERC-20 USDC on Arc testnet
