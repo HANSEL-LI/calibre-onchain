@@ -55,6 +55,11 @@ The canonical `gg.calibre.*` key schema is owned by
 gateway can't import that Python module, so it keeps its own
 `TEXT_RECORD_KEYS` map (in `src/profile.ts`) which **mirrors** that schema.
 
+That mirror is enforced, not just documented: `ranking/` emits its key set to a
+committed `ranking/keys.json` fixture, and `test/keys-schema.test.ts` (in the
+`npm test` run) asserts `Object.keys(TEXT_RECORD_KEYS)` set-equals that fixture.
+A key added/renamed on either side fails the build (#445).
+
 The profile API returns
 `{ display_name, tier, brier_skill, roi, pnl, wallet_address, discord_handle, riot_id, clan }`.
 
