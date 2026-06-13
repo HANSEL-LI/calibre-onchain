@@ -4,13 +4,16 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calibre-onchain"
-version = "0.0.0"
-description = "calibre-onchain SDK — the contract client (create/resolve) + tx-signing helpers the private calibre app imports. W0 scaffold; implementation lands in W1.x."
+version = "0.1.0"
+description = "calibre-onchain SDK — the contract client (create/resolve) + tx-signing helpers the private calibre app imports for Seam 1 (calibre #425)."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Hansel" }]
-dependencies = []
+dependencies = [
+    "web3>=6.0.0",
+    "eth-account>=0.11.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/calibre_onchain"]
