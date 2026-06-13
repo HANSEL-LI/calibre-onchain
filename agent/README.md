@@ -33,7 +33,8 @@ The contract is `CalibreMarket.sol` — the W1.1 custody-independent core plus t
 merged **W1.2 (#422)** EIP-712 voucher extension. The agent's making leg is the
 **voucher buy** (#444): each tick, under the band + cap, it buys the YES side at
 the prior by submitting a **calibre-signed** EIP-712 voucher to
-`buy(quote, cost, sig)`, **holds** under the inventory cap, and **redeems** the
+`buy(quote, sig)` (the contract charges the signed `quote.maxCost`; #465),
+**holds** under the inventory cap, and **redeems** the
 winning side once the market resolves on-chain. (The W1.1 complete-set `mint` is
 retained on `MarketClient` as a primitive but is no longer the making venue.)
 

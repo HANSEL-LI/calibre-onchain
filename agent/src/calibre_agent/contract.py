@@ -2,13 +2,14 @@
 
 The contract is ``contracts/src/CalibreMarket.sol`` — the W1.1 custody-independent
 core plus the merged **W1.2 (#422)** EIP-712 voucher extension. The agent's making
-leg is now the **voucher buy** (``buy(quote, cost, sig)``, #444); the W1.1
+leg is now the **voucher buy** (``buy(quote, sig)``, #444); the W1.1
 complete-set ``mint`` is retained as a primitive but no longer the making venue.
 The trade surface this client drives:
 
-- ``buy(quote, cost, sig)`` — submit a backend-signed EIP-712 voucher (W1.2): the
+- ``buy(quote, sig)`` — submit a backend-signed EIP-712 voucher (W1.2): the
   agent (the buyer) takes ``size`` shares of one side from calibre's
-  standing-counterparty inventory against a ``cost <= maxCost`` USDC pull.
+  standing-counterparty inventory against the signed ``quote.maxCost`` USDC pull
+  (the charge is the signed amount; #465 dropped the unsigned ``cost`` arg).
 - ``redeem(chainMarketId)`` — after resolve, redeem the winning side 1:1.
 - ``mint(chainMarketId, sets)`` — W1.1 complete-set mint (retained primitive).
 - ``transferShares(chainMarketId, isYes, to, amount)`` — move one side.
@@ -43,7 +44,9 @@ _MARKET_ABI = [
         "outputs": [],
     },
     {
-        # W1.2 EIP-712 voucher buy: buy(Quote q, uint256 cost, bytes sig). The
+        # W1.2 EIP-712 voucher buy: buy(Quote q, bytes sig). The charge is the
+        # signed q.maxCost itself — there is no separate unsigned cost arg
+        # (dropped in #465 so a buyer cannot pay below the signed price). The
         # tuple field order is the FROZEN Quote struct (CalibreMarket.sol).
         "type": "function", "name": "buy", "stateMutability": "nonpayable",
         "inputs": [
@@ -56,7 +59,6 @@ _MARKET_ABI = [
                 {"name": "nonce", "type": "uint256"},
                 {"name": "expiry", "type": "uint256"},
             ]},
-            {"name": "cost", "type": "uint256"},
             {"name": "sig", "type": "bytes"},
         ],
         "outputs": [],
@@ -239,7 +241,8 @@ class MarketClient:
         tx hash. The agent is the buyer: it reads its on-chain nonce, obtains a
         voucher signed by calibre's ``voucherSigner`` from the configured
         :class:`~calibre_agent.voucher.VoucherSource`, then submits
-        ``buy(quote, cost, sig)`` under its own tx-signing identity.
+        ``buy(quote, sig)`` under its own tx-signing identity. The contract
+        charges the signed ``quote.maxCost`` (no unsigned cost arg; #465).
 
         ``side`` is 0=NO / 1=YES; ``price_yes_micro`` is the public prior the
         voucher source prices/bounds the cost against. Replaces the ``mint`` leg
@@ -261,8 +264,9 @@ class MarketClient:
             int(q["marketId"]), q["buyer"], int(q["side"]), int(q["size"]),
             int(q["maxCost"]), int(q["nonce"]), int(q["expiry"]),
         )
+        # The contract charges the signed q.maxCost; no unsigned cost arg (#465).
         return self._send(self._market.functions.buy(
-            quote_tuple, int(voucher.cost), voucher.signature
+            quote_tuple, voucher.signature
         ))
 
     def redeem(self, market_id: int) -> str:

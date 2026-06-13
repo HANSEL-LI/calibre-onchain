@@ -2,7 +2,9 @@
 
 Under custody Model A-lite the agent does **not** mint complete sets; it buys
 shares from calibre's standing-counterparty inventory by submitting a
-**backend-signed** EIP-712 voucher to ``CalibreMarket.buy(quote, cost, sig)``.
+**backend-signed** EIP-712 voucher to ``CalibreMarket.buy(quote, sig)``. The
+contract charges the signed ``quote.maxCost`` (the signer sets it to the exact
+intended price; #465 dropped the unsigned ``cost`` arg that let a buyer underpay).
 The agent is the **buyer** (``msg.sender == quote.buyer``); the voucher is signed
 by calibre's ``voucherSigner`` key — a *different* trust surface from the agent's
 own tx-signing identity (its Dynamic server wallet / local key).
@@ -54,9 +56,11 @@ _QUOTE_TYPES = {
     ]
 }
 
-# Signer-side discipline (W8 §5): voucher lives <=30s; maxCost = quote x 1.01.
+# Signer-side discipline (W8 §5): voucher lives <=30s. The contract charges the
+# signed maxCost (#465 dropped the unsigned cost arg), so the offline signer sets
+# maxCost == cost — the buyer pays exactly the fair price, no slippage buffer (the
+# buffer only existed to allow a lower on-chain cost, which no longer exists).
 DEFAULT_EXPIRY_S = 30
-MAXCOST_BPS = 10_100  # 1.01x in basis points
 
 
 @dataclass(frozen=True)
@@ -64,9 +68,12 @@ class SignedVoucher:
     """A backend-signed EIP-712 voucher ready for ``CalibreMarket.buy``.
 
     ``quote`` is the EIP-712 message dict (the exact field names/types the
-    contract hashes); ``cost`` is the USDC (6-dec base units) the buyer will be
-    charged (``cost <= quote['maxCost']``); ``signature`` is the 65-byte (r,s,v)
-    ECDSA signature over ``hashQuote(quote)`` by ``voucherSigner``.
+    contract hashes); ``signature`` is the 65-byte (r,s,v) ECDSA signature over
+    ``hashQuote(quote)`` by ``voucherSigner``. ``cost`` is the USDC (6-dec base
+    units) the buyer will be charged — kept for the agent's own
+    bookkeeping/logging, but it is **not** sent on-chain: the contract charges
+    the signed ``quote['maxCost']`` (#465), so the signer sets ``maxCost`` to the
+    intended charge and ``cost == quote['maxCost']``.
     """
 
     quote: dict
@@ -105,14 +112,16 @@ def _cost_and_maxcost(*, side: int, size: int, price_yes_micro: int,
 
     The per-share price of the bought side is the prior for YES, ``1 - prior``
     for NO (micro-cents, ``10000`` == prob 1.0). ``cost`` is that price x size;
-    ``maxCost`` adds the W8 §5 1.01x slippage ceiling. Offline-only heuristic:
-    the production :class:`CalibreVoucherClient` gets the authoritative price +
-    cost from calibre's LMSR, not this approximation.
+    ``maxCost`` equals ``cost`` — the contract charges the signed ``maxCost``
+    directly (#465), so the buyer pays exactly the fair price with no slippage
+    buffer. Offline-only heuristic: the production
+    :class:`CalibreVoucherClient` gets the authoritative price + cost from
+    calibre's LMSR, not this approximation.
     """
     side_price_micro = price_yes_micro if side == 1 else (10_000 - price_yes_micro)
     # micro-cents -> USDC base units: (price/10000) * usdc_unit per share.
     cost = side_price_micro * size * usdc_unit // 10_000
-    max_cost = cost * MAXCOST_BPS // 10_000
+    max_cost = cost  # the signed maxCost is the charge (#465); no buffer
     return cost, max_cost
 
 

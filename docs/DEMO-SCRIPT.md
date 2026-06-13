@@ -74,7 +74,7 @@ overlap."
 signs an EIP-712 price voucher; the contract verifies the signature, enforces the
 nonce, expiry, and slippage ceiling, and moves shares from pre-minted inventory.
 A real signed buy on Arc testnet — the A-lite differentiator."
-**Caption:** *Arc — `buy(quote, cost, sig)`. Off-chain LMSR, on-chain custody.
+**Caption:** *Arc — `buy(quote, sig)`. Off-chain LMSR, on-chain custody.
 Complete-set solvent by construction.*
 `[OWNER: deployed CalibreMarket address + a real signed buy tx]`
 
