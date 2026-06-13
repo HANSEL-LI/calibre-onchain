@@ -2,7 +2,7 @@
 
 Each tick: check the kill-switch, read the public prior (W7.1), read on-chain
 state, decide (:func:`maker.decide`), and execute the action through the
-``MarketClient`` (mint / redeem) unless ``dry_run`` is set. Bounded by the
+``MarketClient`` (W1.2 voucher buy / redeem) unless ``dry_run`` is set. Bounded by the
 inventory cap (a bug can never spend past ``inventory_cap_sets`` complete sets)
 and, for demos, by ``max_iterations`` and the kill-switch file.
 
@@ -18,7 +18,7 @@ import time
 from typing import Callable
 
 from .config import AgentConfig
-from .contract import MarketClient
+from .contract import OUTCOME_YES, MarketClient
 from .maker import Action, ActionKind, decide
 from .price import MarketNotOpen, PriceFeed, PriceUnavailable
 
@@ -47,11 +47,15 @@ def step(config: AgentConfig, feed: PriceFeed, client: MarketClient) -> Action:
         return action
 
     if action.kind is ActionKind.MINT:
+        # W1.2 voucher buy (#444): the maker's MINT intent now maps to buying the
+        # YES side at the prior via a backend-signed voucher, not a W1.1 mint. The
+        # buyer still needs USDC allowance so the contract can pull `cost`.
         approve_tx = client.ensure_allowance(action.sets)
         if approve_tx:
             log.info("approve usdc market=%s tx=%s", config.market_id, approve_tx)
-        tx = client.mint(config.market_id, action.sets)
-        log.info("mint market=%s sets=%s tx=%s reason=%s",
+        tx = client.buy(config.market_id, side=OUTCOME_YES, size=action.sets,
+                        price_yes_micro=quote.price_yes)
+        log.info("buy market=%s side=YES size=%s tx=%s reason=%s",
                  config.market_id, action.sets, tx, action.reason)
     elif action.kind is ActionKind.REDEEM:
         tx = client.redeem(config.market_id)

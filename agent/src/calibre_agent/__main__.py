@@ -15,6 +15,7 @@ from .contract import MarketClient
 from .loop import run
 from .price import PriceFeed
 from .signer import build_signer
+from .voucher import build_voucher_source
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -48,8 +49,31 @@ def main(argv: list[str] | None = None) -> int:
         signer=signer,
         usdc_address=config.usdc_address,
     )
-    log.info("signer=%s server_wallet=%s",
-             client.address, config.uses_server_wallet())
+
+    # Build the W1.2 voucher source: calibre's signing endpoint (production) or
+    # the local-key fallback (testnet). Reads usdcUnit from the chain so the
+    # local signer never hardcodes the scale.
+    try:
+        usdc_unit = client.usdc_unit()
+    except Exception as exc:  # chain unreachable at boot
+        log.error("could not read usdcUnit from %s: %s",
+                  config.contract_address, exc)
+        feed.close()
+        return 2
+    try:
+        voucher_source = build_voucher_source(
+            config, chain_id=config.chain_id,
+            verifying_contract=config.contract_address, usdc_unit=usdc_unit,
+        )
+    except ValueError as exc:
+        log.error("voucher source error: %s", exc)
+        feed.close()
+        return 2
+    client.set_voucher_source(voucher_source)
+
+    log.info("signer=%s server_wallet=%s voucher_source=%s",
+             client.address, config.uses_server_wallet(),
+             type(voucher_source).__name__)
     try:
         run(config, feed, client)
     finally:

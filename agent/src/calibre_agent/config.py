@@ -59,6 +59,18 @@ class AgentConfig:
     dynamic_api_base: str = "https://app.dynamicauth.com/api/v0"
     agent_private_key: str = ""  # local-key fallback (testnet only)
 
+    # --- voucher source (W1.2 buy leg; one of these selects the source) ---
+    calibre_voucher_api_base: str = ""
+    """Calibre's quote/sign endpoint (W3.1, private app). When set, the agent
+    fetches a backend-signed voucher from it (the production path)."""
+    calibre_voucher_api_key: str = ""
+    """Optional bearer for the calibre voucher endpoint."""
+    agent_voucher_signer_key: str = ""
+    """Local voucherSigner key — the offline/testnet fallback that signs the
+    EIP-712 voucher locally so the agent buys with no calibre backend. TESTNET
+    ONLY. This is the contract's ``voucherSigner`` key, distinct from the agent's
+    tx-signing key (``AGENT_PRIVATE_KEY`` / the Dynamic server wallet)."""
+
     # --- strategy ---
     size_sets: int = 1
     """Complete sets minted per action (the fixed maker size)."""
@@ -107,6 +119,11 @@ class AgentConfig:
                 "DYNAMIC_API_BASE", cls.dynamic_api_base
             ).rstrip("/"),
             agent_private_key=os.environ.get("AGENT_PRIVATE_KEY", ""),
+            calibre_voucher_api_base=os.environ.get(
+                "CALIBRE_VOUCHER_API_BASE", ""
+            ).rstrip("/"),
+            calibre_voucher_api_key=os.environ.get("CALIBRE_VOUCHER_API_KEY", ""),
+            agent_voucher_signer_key=os.environ.get("AGENT_VOUCHER_SIGNER_KEY", ""),
             size_sets=_env_int("AGENT_SIZE_SETS", cls.size_sets),
             spread_micro=_env_int("AGENT_SPREAD_MICRO", cls.spread_micro),
             inventory_cap_sets=_env_int(

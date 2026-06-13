@@ -20,7 +20,7 @@ class FakeClient:
     def __init__(self, view: MarketView):
         self._view = view
         self.address = "0xAGENT"
-        self.minted = []
+        self.bought = []
         self.redeemed = []
         self.approved = []
 
@@ -31,9 +31,10 @@ class FakeClient:
         self.approved.append(sets)
         return None
 
-    def mint(self, market_id: int, sets: int) -> str:
-        self.minted.append((market_id, sets))
-        return "0xmint"
+    def buy(self, market_id: int, *, side: int, size: int,
+            price_yes_micro: int) -> str:
+        self.bought.append((market_id, side, size, price_yes_micro))
+        return "0xbuy"
 
     def redeem(self, market_id: int) -> str:
         self.redeemed.append(market_id)
@@ -50,11 +51,12 @@ def _open(yes=0, no=0):
     return MarketView(exists=True, outcome=OUTCOME_UNRESOLVED, yes_shares=yes, no_shares=no)
 
 
-def test_step_mints_when_live():
+def test_step_buys_yes_voucher_when_live():
     client = FakeClient(_open())
     action = step(_cfg(), FakeFeed(5000), client)
-    assert action.kind is ActionKind.MINT
-    assert client.minted == [(42, 1)]
+    assert action.kind is ActionKind.MINT  # maker intent unchanged
+    # ...now mapped to a YES voucher buy (side=1) at the prior, not a W1.1 mint.
+    assert client.bought == [(42, OUTCOME_YES, 1, 5000)]
     assert client.approved == [1]
 
 
@@ -62,7 +64,7 @@ def test_step_dry_run_does_not_act():
     client = FakeClient(_open())
     action = step(_cfg(dry_run=True), FakeFeed(5000), client)
     assert action.kind is ActionKind.MINT  # decided...
-    assert client.minted == []              # ...but not executed
+    assert client.bought == []              # ...but not executed
     assert client.approved == []
 
 
@@ -91,12 +93,12 @@ def test_run_halts_on_kill_switch(tmp_path):
     ticks = run(_cfg(kill_switch_file=str(ks), dry_run=True), FakeFeed(5000),
                 client, sleep=lambda _s: None)
     assert ticks == 0
-    assert client.minted == []
+    assert client.bought == []
 
 
 def test_run_respects_inventory_cap_unattended():
-    # At cap → every tick holds, never mints, even live.
+    # At cap → every tick holds, never buys, even live.
     client = FakeClient(_open(yes=3, no=3))
     ticks = run(_cfg(max_iterations=5), FakeFeed(5000), client, sleep=lambda _s: None)
     assert ticks == 5
-    assert client.minted == []
+    assert client.bought == []
