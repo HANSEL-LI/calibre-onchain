@@ -77,6 +77,58 @@ test("displayNameFor takes the leftmost label, null for the bare parent", () => 
   assert.equal(displayNameFor("calibre.eth"), null);
 });
 
+test("displayNameFor resolves clan-nested <user>.<clan>.calibre.eth to the user leaf", () => {
+  // W6.3 / F4: the <clan> label is namespacing, not a second lookup — the
+  // leftmost label is still the calibre display_name.
+  assert.equal(displayNameFor("demo.sharks.calibre.eth"), "demo");
+  // A bare clan name is structurally a flat user subname → looked up as a user.
+  assert.equal(displayNameFor("sharks.calibre.eth"), "sharks");
+});
+
+test("decodeDnsName round-trips a clan-nested subname", () => {
+  assert.equal(
+    decodeDnsName(dnsEncode("demo.sharks.calibre.eth")),
+    "demo.sharks.calibre.eth",
+  );
+});
+
+test("text(gg.calibre.rank) on a clan-nested name resolves the user's tier", async () => {
+  const inner = encodeFunctionData({
+    abi: RECORD_ABI,
+    functionName: "text",
+    args: [NODE, "gg.calibre.rank"],
+  });
+  const { result } = await handleResolve(
+    resolveCall("demo.sharks.calibre.eth", inner),
+    stubClient({ demo: DEMO }),
+  );
+  assert.equal(unwrapText(result), "diamond");
+});
+
+test("gg.calibre.clan resolves the user's clan on a clan-nested name", async () => {
+  const inner = encodeFunctionData({
+    abi: RECORD_ABI,
+    functionName: "text",
+    args: [NODE, "gg.calibre.clan"],
+  });
+  const { result } = await handleResolve(
+    resolveCall("demo.sharks.calibre.eth", inner),
+    stubClient({ demo: DEMO }),
+  );
+  assert.equal(unwrapText(result), "sharks");
+});
+
+test("unknown user under a clan resolves to empty (no enumeration oracle)", async () => {
+  const empty = stubClient({}); // every fetch -> null
+  const inner = encodeFunctionData({
+    abi: RECORD_ABI,
+    functionName: "text",
+    args: [NODE, "gg.calibre.rank"],
+  });
+  const { result } = await handleResolve(resolveCall("ghost.sharks.calibre.eth", inner), empty);
+  assert.equal(unwrapText(result), "");
+});
+
 test("addr(node) returns the wallet address for an opted-in profile", async () => {
   const inner = encodeFunctionData({ abi: RECORD_ABI, functionName: "addr", args: [NODE] });
   const { result } = await handleResolve(resolveCall("demo.calibre.eth", inner), stubClient({ demo: DEMO }));
