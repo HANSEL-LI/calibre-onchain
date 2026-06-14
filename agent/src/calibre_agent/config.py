@@ -74,6 +74,15 @@ class AgentConfig:
     single-server-controlled agent wallet (server + Dynamic each hold one share)."""
     agent_private_key: str = ""  # local-key fallback (testnet only)
 
+    # --- MPC policy violation webhook (#619) ---
+    dynamic_webhook_secret: str = ""
+    """Per-webhook secret Dynamic signs ``waas.policy.violation`` deliveries with
+    (sensitive). Presence selects the policy-webhook handler; an empty secret
+    makes the handler reject every delivery (fail-closed). Read from
+    ``DYNAMIC_WEBHOOK_SECRET``; verified via HMAC-SHA256 over the raw request body
+    (see ``policy_webhook``). A verified violation kills the agent by writing
+    ``kill_switch_file``."""
+
     # --- voucher source (W1.2 buy leg; one of these selects the source) ---
     calibre_voucher_api_base: str = ""
     """Calibre's quote/sign endpoint (W3.1, private app). When set, the agent
@@ -135,6 +144,7 @@ class AgentConfig:
                 "DYNAMIC_THRESHOLD_SCHEME", cls.dynamic_threshold_scheme
             ),
             agent_private_key=os.environ.get("AGENT_PRIVATE_KEY", ""),
+            dynamic_webhook_secret=os.environ.get("DYNAMIC_WEBHOOK_SECRET", ""),
             calibre_voucher_api_base=os.environ.get(
                 "CALIBRE_VOUCHER_API_BASE", ""
             ).rstrip("/"),
@@ -157,3 +167,8 @@ class AgentConfig:
         """True when Dynamic server-wallet credentials are present (the bounty
         path); else the local-key fallback signs."""
         return bool(self.dynamic_api_key and self.dynamic_environment_id)
+
+    def uses_policy_webhook(self) -> bool:
+        """True when a Dynamic webhook secret is configured (the policy-violation
+        safety leg, #619)."""
+        return bool(self.dynamic_webhook_secret)
