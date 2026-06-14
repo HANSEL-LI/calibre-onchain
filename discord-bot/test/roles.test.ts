@@ -84,6 +84,18 @@ test("every tier has a style; only the top three are hoisted", () => {
   assert.deepEqual(hoisted, ["Sharp", "Seer", "Oracle"]);
 });
 
+test("tier colours mirror the calibre web --tier-* ramp", () => {
+  // Parity pin: these MUST match style.css `--tier-*` so a Discord role colour
+  // matches the member's in-app name. Update both sides together.
+  assert.equal(TIER_STYLE.Static.color, 0x5f5e5a);
+  assert.equal(TIER_STYLE.Hunch.color, 0x8a93a3);
+  assert.equal(TIER_STYLE.Read.color, 0x7fc6ff);
+  assert.equal(TIER_STYLE.Edge.color, 0x5eeea0);
+  assert.equal(TIER_STYLE.Sharp.color, 0x5b8cff);
+  assert.equal(TIER_STYLE.Seer.color, 0xb58cff);
+  assert.equal(TIER_STYLE.Oracle.color, 0xeef4ff);
+});
+
 test("tierIndex orders the ladder; -1 for null/unknown (promotion comparison)", () => {
   assert.equal(tierIndex("Static"), 0);
   assert.equal(tierIndex("Oracle"), 6);
