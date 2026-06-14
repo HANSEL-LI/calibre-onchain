@@ -1,0 +1,34 @@
+# calibre Discord role-sync bot (W6.4 / #547) — managed systemd service.
+# Mirrors the calibre-ens-gateway unit: long-running Node process, restarts on
+# crash, survives logout/reboot.
+#
+# Install (see docs/DEPLOY-RUNBOOK.md §6):
+#   cd discord-bot && npm install && npm run build
+#   sudo install -m600 .env /etc/calibre-discord-bot.env
+#   sudo install -m644 deploy/calibre-discord-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now calibre-discord-bot
+#
+# Edit WorkingDirectory below to the absolute path of the checked-out
+# discord-bot/ on the host.
+
+[Unit]
+Description=calibre Discord role-sync bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/calibre-onchain/discord-bot
+EnvironmentFile=/etc/calibre-discord-bot.env
+ExecStart=/usr/bin/env node dist/index.js
+Restart=always
+RestartSec=5
+# The bot reads ENS only + calibre's public API; it holds no DB handle and needs
+# no privileged filesystem access.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
