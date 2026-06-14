@@ -362,16 +362,32 @@ export function createBot(config: BotConfig, ranks: RankReader) {
       const ch = byName.get(d.name);
       if (ch) await upsertPin(ch, pinnedMessageFor(d.match, d.market, config.calibreApiBase));
     }
-    if (plan.archive.length > 0) {
-      const archive = await ensureCategory(g, config.matchArchiveCategoryName);
-      if (archive) {
+    // Prune channels no longer in the active set. Safety: never prune toward an
+    // empty desired set — a transient-empty `/matches/upcoming` must not wipe
+    // every channel; wait for a pass that actually has matches.
+    if (plan.archive.length > 0 && desired.length > 0) {
+      if (config.matchChannelPruneMode === "delete") {
         for (const name of plan.archive) {
           const ch = byName.get(name);
           if (ch) {
             try {
-              await ch.setParent(archive.id, { lockPermissions: false, reason: "calibre match settled/expired" });
+              await ch.delete("calibre match no longer in the active set");
             } catch (err) {
-              console.error(`could not archive #${name}`, err);
+              console.error(`could not delete #${name}`, err);
+            }
+          }
+        }
+      } else {
+        const archive = await ensureCategory(g, config.matchArchiveCategoryName);
+        if (archive) {
+          for (const name of plan.archive) {
+            const ch = byName.get(name);
+            if (ch) {
+              try {
+                await ch.setParent(archive.id, { lockPermissions: false, reason: "calibre match settled/expired" });
+              } catch (err) {
+                console.error(`could not archive #${name}`, err);
+              }
             }
           }
         }

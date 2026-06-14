@@ -83,6 +83,15 @@ export interface BotConfig {
    * the endpoint is fail-closed calibre-side, so a blank token would only 401.
    */
   marketsServiceToken: string;
+  /**
+   * What to do with a per-match channel that's no longer in the active set
+   * (settled / expired / pushed past the limit). `"archive"` (default) moves it
+   * to {@link matchArchiveCategoryName} keeping history; `"delete"` removes it —
+   * right for an ephemeral demo guild where cycling demos would otherwise pile
+   * up archived channels. A prune is skipped when there are no upcoming matches,
+   * so a transient-empty upstream can never wipe every channel.
+   */
+  matchChannelPruneMode: "archive" | "delete";
 }
 
 function req(env: NodeJS.ProcessEnv, name: string, fallback?: string): string {
@@ -121,5 +130,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     // Optional: empty token => side-role sync stays off (the calibre endpoint
     // is fail-closed, so a blank token would only 401). Opt-in like the push.
     marketsServiceToken: env.MARKETS_SERVICE_TOKEN ?? "",
+    matchChannelPruneMode:
+      (env.MATCH_CHANNEL_PRUNE_MODE ?? "archive").toLowerCase() === "delete" ? "delete" : "archive",
   };
 }
