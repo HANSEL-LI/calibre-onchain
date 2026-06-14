@@ -16,6 +16,11 @@ export interface PublicProfile {
   brier_skill: number | null; // 1 − brier_avg/0.25; >0 beats a coin-flip
   roi: number | null; // net / lifetime-deployed; null below the deployed floor
   pnl: number | null; // net P&L in base units (÷10_000 = points); null if never traded
+  // Forecasting-track stats (#597), derived calibre-side from the user's settled
+  // (resolved non-void) markets; all null until a market resolves (null→unset).
+  win_rate: number | null; // wins / settled markets (ratio)
+  n_resolved: number | null; // count of resolved (non-void) markets traded
+  streak: number | null; // signed current run, +wins/−losses, most-recent-first
   wallet_address: string | null;
   discord_handle: string | null;
   riot_id: string | null;
@@ -37,6 +42,11 @@ export const TEXT_RECORD_KEYS = {
   "gg.calibre.rank": (p: PublicProfile) => p.tier,
   "gg.calibre.brier": (p: PublicProfile) => fmtNum(p.brier_skill),
   "gg.calibre.roi": (p: PublicProfile) => fmtNum(p.roi),
+  // Forecasting-track stats (#597) — same fmtNum null→unset path as brier/roi;
+  // n_resolved/streak are integers calibre-side, rendered without a decimal.
+  "gg.calibre.winrate": (p: PublicProfile) => fmtNum(p.win_rate),
+  "gg.calibre.resolved": (p: PublicProfile) => fmtNum(p.n_resolved),
+  "gg.calibre.streak": (p: PublicProfile) => fmtNum(p.streak),
   "com.discord": (p: PublicProfile) => p.discord_handle ?? "",
   "gg.calibre.riot": (p: PublicProfile) => p.riot_id ?? "",
   "gg.calibre.clan": (p: PublicProfile) => p.clan ?? "",
