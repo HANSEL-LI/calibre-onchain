@@ -125,6 +125,35 @@ forge script script/Deploy.s.sol:Deploy \
 | `CalibreMarket` address | _TBD — recorded by the owner/booth-gated live Arc run_ |
 | Deploy tx | _TBD — live Arc run_ |
 
+### CCTP V2 bridge-and-mint hook (`DepositAndMintHook.sol`, #613)
+
+A user bridging USDC from any CCTP V2 chain into Arc (**CCTP domain 26**; standard
+Transfer — Fast Transfer is N/A on Arc, so no liquidity dependency) can mint a
+complete set on `CalibreMarket` **in the same destination-side relay transaction**.
+CCTP V2 does not auto-invoke hooks: the source burn carries `hookData` and a
+relayer runs Circle's
+[`CCTPHookWrapper`](https://github.com/circlefin/evm-cctp-contracts/blob/master/src/examples/CCTPHookWrapper.sol)
+on Arc, which mints the USDC to the hook (`mintRecipient`) then `call`s it.
+
+To bridge-and-mint, the source-chain `depositForBurnWithHook` sets
+`mintRecipient = hookAddress` and
+`hookData = abi.encodePacked(hookAddress, abi.encodeCall(DepositAndMintHook.depositAndMint, (chainMarketId, recipient)))`.
+The hook derives `sets = balanceOf(hook) / usdcUnit`, mints the set, forwards both
+YES+NO legs to `recipient`, and refunds any sub-unit dust. Deploy against an
+existing market:
+
+```bash
+cd contracts
+export MARKET_ADDRESS=0x...        # the deployed CalibreMarket
+forge script script/DeployHook.s.sol:DeployHook \
+  --rpc-url https://rpc.testnet.arc.network --broadcast
+```
+
+| Field | Value |
+|---|---|
+| `DepositAndMintHook` address | _TBD — recorded by the owner/booth-gated live Arc run_ |
+| Live cross-chain bridge demo | _Owner booth/demo step (Base/Arbitrum → Arc + relayer + testnet USDC)_ |
+
 ## End-to-end settlement proof (W1.3, #423) — the Saturday-noon custody checkpoint
 
 `script/EndToEnd.s.sol` is the umbrella's **custody checkpoint**: a broadcastable
