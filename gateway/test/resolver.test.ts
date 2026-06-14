@@ -8,8 +8,13 @@ import {
   parseAbi,
   toHex,
 } from "viem";
-import type { ProfileClient, PublicProfile } from "../src/profile.js";
-import { decodeDnsName, displayNameFor, handleResolve } from "../src/resolver.js";
+import type { ClanClient, ClanProfile, ProfileClient, PublicProfile } from "../src/profile.js";
+import {
+  bareClanLabelFor,
+  decodeDnsName,
+  displayNameFor,
+  handleResolve,
+} from "../src/resolver.js";
 
 const RESOLVE_ABI = parseAbi(["function resolve(bytes name, bytes data) view returns (bytes)"]);
 const RECORD_ABI = parseAbi([
@@ -55,6 +60,24 @@ function stubClient(byName: Record<string, PublicProfile>): ProfileClient {
     },
   };
 }
+
+function stubClanClient(byClan: Record<string, ClanProfile>): ClanClient {
+  return {
+    async fetch(clan: string) {
+      return byClan[clan] ?? null;
+    },
+  };
+}
+
+const SHARKS_CLAN: ClanProfile = {
+  clan: "sharks",
+  size: 7,
+  avg_rank: "Edge",
+  brier_skill: 0.31,
+  median_brier_skill: 0.28,
+  roi: 0.42,
+  top_member: "demo",
+};
 
 // `result` is the `bytes` return of ENSIP-10 resolve() — the inner record call's
 // return type ABI-encoded *directly*. A real client decodes it as that type with
@@ -194,4 +217,108 @@ test("addr() result decodes the way a real ENS client does (no extra wrap)", asy
   const { result } = await handleResolve(resolveCall("demo.calibre.eth", inner), stubClient({ demo: DEMO }));
   const addr = decodeFunctionResult({ abi: RECORD_ABI, functionName: "addr", data: result });
   assert.equal(String(addr).toLowerCase(), DEMO.wallet_address!.toLowerCase());
+});
+
+// ── Clan-aggregate records on a bare <clan>.hicalibre.eth (#583) ──
+
+test("bareClanLabelFor: only a 3-label name is a clan candidate", () => {
+  assert.equal(bareClanLabelFor("sharks.calibre.eth"), "sharks"); // bare clan
+  assert.equal(bareClanLabelFor("demo.sharks.calibre.eth"), null); // nested → user leaf
+  assert.equal(bareClanLabelFor("calibre.eth"), null); // bare parent
+});
+
+test("bare clan name with no matching user resolves clan-aggregate records", async () => {
+  const clanInner = encodeFunctionData({
+    abi: RECORD_ABI,
+    functionName: "text",
+    args: [NODE, "gg.calibre.clan.brier"],
+  });
+  // No user "sharks" exists; the clan endpoint knows the clan.
+  const { result } = await handleResolve(
+    resolveCall("sharks.calibre.eth", clanInner),
+    stubClient({}),
+    stubClanClient({ sharks: SHARKS_CLAN }),
+  );
+  assert.equal(unwrapText(result), "0.31");
+});
+
+test("clan size / avgrank / roi map through", async () => {
+  const clans = stubClanClient({ sharks: SHARKS_CLAN });
+  const key = (k: string) =>
+    encodeFunctionData({ abi: RECORD_ABI, functionName: "text", args: [NODE, k] });
+  assert.equal(
+    unwrapText(
+      (await handleResolve(resolveCall("sharks.calibre.eth", key("gg.calibre.clan.size")), stubClient({}), clans)).result,
+    ),
+    "7",
+  );
+  assert.equal(
+    unwrapText(
+      (await handleResolve(resolveCall("sharks.calibre.eth", key("gg.calibre.clan.avgrank")), stubClient({}), clans)).result,
+    ),
+    "Edge",
+  );
+  assert.equal(
+    unwrapText(
+      (await handleResolve(resolveCall("sharks.calibre.eth", key("gg.calibre.clan.roi")), stubClient({}), clans)).result,
+    ),
+    "0.42",
+  );
+});
+
+test("a real user wins over a same-label clan (user-first disambiguation)", async () => {
+  // Both a user "sharks" and a clan "sharks" exist. A user-record key resolves
+  // the user; the clan client is never consulted for the user's own records.
+  const userSharks: PublicProfile = { ...DEMO, display_name: "sharks", tier: "Sharp" };
+  const rankInner = encodeFunctionData({
+    abi: RECORD_ABI,
+    functionName: "text",
+    args: [NODE, "gg.calibre.rank"],
+  });
+  const { result } = await handleResolve(
+    resolveCall("sharks.calibre.eth", rankInner),
+    stubClient({ sharks: userSharks }),
+    stubClanClient({ sharks: SHARKS_CLAN }),
+  );
+  assert.equal(unwrapText(result), "Sharp");
+});
+
+test("clan key on a nested name does not trigger clan lookup", async () => {
+  // demo.sharks.calibre.eth is a user leaf; a clan-aggregate key has no user
+  // value and must NOT fall through to the clan endpoint.
+  const clanInner = encodeFunctionData({
+    abi: RECORD_ABI,
+    functionName: "text",
+    args: [NODE, "gg.calibre.clan.size"],
+  });
+  const { result } = await handleResolve(
+    resolveCall("demo.sharks.calibre.eth", clanInner),
+    stubClient({ demo: DEMO }),
+    stubClanClient({ sharks: SHARKS_CLAN }),
+  );
+  assert.equal(unwrapText(result), "");
+});
+
+test("unknown bare clan resolves to empty (no enumeration oracle)", async () => {
+  const clanInner = encodeFunctionData({
+    abi: RECORD_ABI,
+    functionName: "text",
+    args: [NODE, "gg.calibre.clan.brier"],
+  });
+  const { result } = await handleResolve(
+    resolveCall("ghosts.calibre.eth", clanInner),
+    stubClient({}),
+    stubClanClient({}),
+  );
+  assert.equal(unwrapText(result), "");
+});
+
+test("addr() on a clan-only name is the zero address (clans have no wallet)", async () => {
+  const inner = encodeFunctionData({ abi: RECORD_ABI, functionName: "addr", args: [NODE] });
+  const { result } = await handleResolve(
+    resolveCall("sharks.calibre.eth", inner),
+    stubClient({}),
+    stubClanClient({ sharks: SHARKS_CLAN }),
+  );
+  assert.equal(unwrapAddr(result), "0x0000000000000000000000000000000000000000");
 });

@@ -37,16 +37,21 @@ sig over keccak256(abi.encodePacked(
 |---|---|
 | `demo.calibre.eth` | the `demo` user profile (flat subname) |
 | `demo.sharks.calibre.eth` | the `demo` user profile (clan-nested, W6.3 / F4) |
-| `sharks.calibre.eth` | a `sharks` user lookup (no clan-aggregate endpoint yet) |
+| `sharks.calibre.eth` | the `sharks` user if one exists, else the `sharks` **clan-aggregate** profile (#583) |
 | `calibre.eth` | nothing (bare parent) |
 
 Clan nesting (`<user>.<clan>.calibre.eth`) is an **addressing convenience**: the
 `<clan>` label is namespacing, so the leftmost label is always the calibre
-`display_name` and a nested name resolves the same user as the flat form. There
-is no clan-aggregate profile in Seam 2 this weekend, so a bare clan name is
-looked up as a user and yields the empty record for a non-profile label — the
-same indistinguishable empty answer as any unknown name (no enumeration oracle).
-The clan-membership cross-check is a W6.4 concern.
+`display_name` and a nested name resolves the same user as the flat form.
+
+A **bare** `<clan>.hicalibre.eth` (3 labels) is ambiguous — it could be a flat
+user subname or a clan. The gateway resolves it **user-first**: it tries the
+leftmost label as a user, and only when no such user exists does it serve
+clan-aggregate text records (`gg.calibre.clan.*`, #583) from `GET /clans/{clan}`.
+So a real user name always resolves as a user; a clan-only label resolves the
+clan. An unknown bare label yields the empty record (no enumeration oracle).
+`addr()` is a user-only record, so a clan-only name resolves `addr()` to the
+zero address.
 
 ## Record-key mapping (profile JSON → ENS records)
 
@@ -76,6 +81,23 @@ The profile API returns
 A non-existent / not-opted-in / bot subname → the profile API returns an
 indistinguishable 404 → the gateway answers with the **empty value** (`0x` for
 `addr`, `""` for `text`), the same as an unset record. No enumeration oracle.
+
+### Clan-aggregate records (`<clan>.hicalibre.eth`, #583)
+
+A bare clan name with no matching user serves a **separate** clan-key namespace
+from `GET /clans/{clan}` (the calibre clan-aggregate endpoint). These keys live
+in `CLAN_TEXT_RECORD_KEYS` (in `src/profile.ts`) — deliberately **not** part of
+the canonical user-key drift contract above (they describe a clan, not a user):
+
+| ENS query | Source field |
+|---|---|
+| `text(node, "gg.calibre.clan.size")` | `size` (member count) |
+| `text(node, "gg.calibre.clan.avgrank")` | `avg_rank` (tier of mean member skill) |
+| `text(node, "gg.calibre.clan.brier")` | `brier_skill` (pooled clan Brier) |
+| `text(node, "gg.calibre.clan.roi")` | `roi` (aggregate) |
+
+The existing single `gg.calibre.clan` user key (a *user's* clan label) is
+distinct from these dotted aggregate keys, so the two namespaces don't collide.
 
 ## Run
 
