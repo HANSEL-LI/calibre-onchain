@@ -5,10 +5,11 @@ mirrors a points-market resolution onto the Arc ``CalibreMarket`` contract. The
 client's settlement inputs are ``(chain_market_id, outcome)`` and nothing more —
 no LMSR state, points, or ledger internals cross the public/private boundary.
 
-Two methods, both signed with the resolver key (``onlyResolver`` on the
+Three methods, all signed with the resolver key (``onlyResolver`` on the
 contract):
 
 - ``create_market(chain_market_id)`` → ``createMarket(uint256)``
+- ``seed_inventory(chain_market_id, sets)`` → ``seedInventory(uint256, uint256)``
 - ``resolve(chain_market_id, outcome)`` → ``resolve(uint256, uint8)``
 
 ``outcome`` is the points-side string ``"yes"`` / ``"no"``; it maps to the
@@ -16,10 +17,17 @@ contract's ``Outcome`` enum **YES = 1, NO = 2** (``UNRESOLVED = 0`` is rejected
 by the contract with ``InvalidOutcome()`` — see ``CalibreMarket.sol``). The
 caller never sees the enum.
 
-ABI surface: only ``createMarket`` and ``resolve`` are encoded here (this seam
-is create/resolve only — mint/redeem/trading are user- or out-of-scope paths).
-The fragments match ``CalibreMarket.sol`` as of W1.1; when the deployed ABI is
-finalized, only ``_ABI`` + the configured address change.
+``seed_inventory`` stands up the inventory a voucher ``buy`` draws from: it pulls
+``sets * usdcUnit`` USDC from the ``counterparty`` (which must have approved the
+contract) and credits it ``sets`` YES + ``sets`` NO shares. Without it a freshly
+created market has zero counterparty inventory and every ``buy`` reverts
+``InsufficientShares`` — create + seed are the two on-chain steps a market needs
+before it is tradeable.
+
+ABI surface: only ``createMarket``, ``seedInventory``, and ``resolve`` are encoded
+here (this seam is create/seed/resolve only — mint/redeem/the user ``buy`` path
+are out-of-scope user paths). The fragments match ``CalibreMarket.sol``; when the
+deployed ABI is finalized, only ``_ABI`` + the configured address change.
 """
 from __future__ import annotations
 
@@ -29,13 +37,23 @@ from dataclasses import dataclass
 _OUTCOME_YES = 1
 _OUTCOME_NO = 2
 
-# Minimal ABI — only the two onlyResolver entrypoints this seam drives.
+# Minimal ABI — only the onlyResolver entrypoints this seam drives.
 _ABI = [
     {
         "type": "function",
         "name": "createMarket",
         "stateMutability": "nonpayable",
         "inputs": [{"name": "chainMarketId", "type": "uint256"}],
+        "outputs": [],
+    },
+    {
+        "type": "function",
+        "name": "seedInventory",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "chainMarketId", "type": "uint256"},
+            {"name": "sets", "type": "uint256"},
+        ],
         "outputs": [],
     },
     {
@@ -119,6 +137,20 @@ class OnchainClient:
     def create_market(self, chain_market_id: int) -> str:
         """Call ``createMarket(chainMarketId)``; return the tx hash."""
         return self._send(self._contract.functions.createMarket(int(chain_market_id)))
+
+    def seed_inventory(self, chain_market_id: int, sets: int) -> str:
+        """Call ``seedInventory(chainMarketId, sets)``; return the tx hash.
+
+        Pulls ``sets * usdcUnit`` USDC from the contract's ``counterparty`` and
+        credits it ``sets`` complete (YES + NO) share pairs — the inventory a
+        voucher ``buy`` later draws from. The counterparty must hold that USDC and
+        have approved the contract, else the contract reverts ``UsdcTransferFailed``;
+        ``sets`` must be > 0 (``ZeroSets``)."""
+        return self._send(
+            self._contract.functions.seedInventory(
+                int(chain_market_id), int(sets)
+            )
+        )
 
     def resolve(self, chain_market_id: int, outcome: str) -> str:
         """Call ``resolve(chainMarketId, outcome)``; return the tx hash.

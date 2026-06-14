@@ -74,16 +74,23 @@ def test_outcome_rejects_non_yes_no(bad):
         _outcome_to_enum(bad)
 
 
-# --- ABI shape (matches CalibreMarket.sol create/resolve only) --------------
+# --- ABI shape (matches CalibreMarket.sol create/seed/resolve only) ---------
 
-def test_abi_exposes_only_create_market_and_resolve():
+def test_abi_exposes_only_create_market_seed_and_resolve():
     names = {fn["name"] for fn in _ABI}
-    assert names == {"createMarket", "resolve"}
+    assert names == {"createMarket", "seedInventory", "resolve"}
 
 
 def test_create_market_abi_takes_a_single_uint256():
     fn = next(f for f in _ABI if f["name"] == "createMarket")
     assert [i["type"] for i in fn["inputs"]] == ["uint256"]
+    assert fn["outputs"] == []
+    assert fn["stateMutability"] == "nonpayable"
+
+
+def test_seed_inventory_abi_takes_two_uint256():
+    fn = next(f for f in _ABI if f["name"] == "seedInventory")
+    assert [i["type"] for i in fn["inputs"]] == ["uint256", "uint256"]
     assert fn["outputs"] == []
     assert fn["stateMutability"] == "nonpayable"
 
@@ -216,6 +223,32 @@ def test_create_market_coerces_string_id_to_int():
     assert rec.calls[0] == ("createMarket", (99,))
 
 
+# --- seed_inventory call-shape + tx assembly --------------------------------
+
+def test_seed_inventory_encodes_seed_inventory_with_int_id_and_sets():
+    client, rec = _wire_client(nonce=4)
+    tx_hash = client.seed_inventory(42, 100)
+
+    seed_calls = [c for c in rec.calls if c[0] == "seedInventory"]
+    assert seed_calls == [("seedInventory", (42, 100))]
+    # both args coerced to plain ints (seedInventory(uint256, uint256)).
+    assert all(isinstance(a, int) for a in seed_calls[0][1])
+    # no other contract function was touched.
+    assert {c[0] for c in rec.calls} == {"seedInventory"}
+
+    built = rec.built[0]
+    assert built["chainId"] == CHAIN_ID
+    assert built["from"] == SIGNER_ADDR
+    assert built["nonce"] == 4
+    assert tx_hash == b"\xab\xcd\xef".hex()
+
+
+def test_seed_inventory_coerces_string_args_to_int():
+    client, rec = _wire_client()
+    client.seed_inventory("7", "25")  # type: ignore[arg-type]
+    assert rec.calls[0] == ("seedInventory", (7, 25))
+
+
 # --- resolve call-shape + outcome mapping -----------------------------------
 
 def test_resolve_yes_encodes_resolve_uint256_enum1():
@@ -250,16 +283,22 @@ def test_resolve_rejects_invalid_outcome_before_any_tx():
 
 # --- the #468 boundary invariant --------------------------------------------
 
-def test_settlement_inputs_are_only_chain_market_id_and_outcome_boundary():
-    """The SDK's public methods accept nothing beyond (chain_market_id, outcome).
+def test_settlement_inputs_are_only_chain_id_outcome_and_set_count_boundary():
+    """The SDK's public methods carry nothing beyond a chain market id, an
+    outcome string, and a bare set count.
 
-    No LMSR state, points balance, ledger row, price, or size crosses the seam —
-    that surface stays private (see the repo README boundary section).
+    No LMSR state, points balance, ledger row, or price crosses the seam — that
+    surface stays private (see the repo README boundary section). ``sets`` is a
+    plain share-pair count (the on-chain inventory depth), not a points/ledger
+    quantity, so it does not breach the boundary.
     """
     import inspect
 
     create_params = list(inspect.signature(OnchainClient.create_market).parameters)
     assert create_params == ["self", "chain_market_id"]
+
+    seed_params = list(inspect.signature(OnchainClient.seed_inventory).parameters)
+    assert seed_params == ["self", "chain_market_id", "sets"]
 
     resolve_params = list(inspect.signature(OnchainClient.resolve).parameters)
     assert resolve_params == ["self", "chain_market_id", "outcome"]
