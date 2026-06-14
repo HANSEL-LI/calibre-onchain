@@ -344,7 +344,12 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     }
     const byName = new Map(managed.map((c) => [c.name, c]));
 
-    const desired = desiredChannels(matches, markets, config.matchChannelLimit);
+    const desired = desiredChannels(
+      matches,
+      markets,
+      config.matchChannelLimit,
+      config.matchDemoChannelLimit,
+    );
     const plan = reconcileChannels(
       desired,
       managed.map((c) => c.name),
