@@ -56,15 +56,17 @@ function stubClient(byName: Record<string, PublicProfile>): ProfileClient {
   };
 }
 
+// `result` is the `bytes` return of ENSIP-10 resolve() — the inner record call's
+// return type ABI-encoded *directly*. A real client decodes it as that type with
+// no extra unwrap; the on-chain resolveWithProof→UniversalResolver layer supplies
+// the single `bytes` peel for free.
 function unwrapText(result: Hex): string {
-  const [inner] = decodeAbiParameters([{ type: "bytes" }], result) as [Hex];
-  const [value] = decodeAbiParameters([{ type: "string" }], inner) as [string];
+  const [value] = decodeAbiParameters([{ type: "string" }], result) as [string];
   return value;
 }
 
 function unwrapAddr(result: Hex): string {
-  const [inner] = decodeAbiParameters([{ type: "bytes" }], result) as [Hex];
-  const [addr] = decodeAbiParameters([{ type: "address" }], inner) as [string];
+  const [addr] = decodeAbiParameters([{ type: "address" }], result) as [string];
   return addr;
 }
 
@@ -184,12 +186,12 @@ test("unset record on an opted-in profile resolves to empty", async () => {
 });
 
 test("addr() result decodes the way a real ENS client does (no extra wrap)", async () => {
-  // Guards interop against the gateway's own unwrap helpers: a real client peels
-  // resolve()'s declared `bytes` return, then decodes those bytes as addr()'s
-  // return. This must equal the wallet address with no double-wrap.
+  // A real ENS client treats resolve()'s declared `bytes` return as addr()'s
+  // ABI-encoded result and decodes it directly — there is no second `bytes` layer
+  // to peel. `result` IS that bytes value, so decodeFunctionResult(addr, result)
+  // must yield the wallet address. (A double-wrap would surface as an ABI offset.)
   const inner = encodeFunctionData({ abi: RECORD_ABI, functionName: "addr", args: [NODE] });
   const { result } = await handleResolve(resolveCall("demo.calibre.eth", inner), stubClient({ demo: DEMO }));
-  const peeled = decodeFunctionResult({ abi: RESOLVE_ABI, functionName: "resolve", data: result }) as Hex;
-  const addr = decodeFunctionResult({ abi: RECORD_ABI, functionName: "addr", data: peeled });
+  const addr = decodeFunctionResult({ abi: RECORD_ABI, functionName: "addr", data: result });
   assert.equal(String(addr).toLowerCase(), DEMO.wallet_address!.toLowerCase());
 });

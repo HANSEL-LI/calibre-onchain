@@ -73,7 +73,13 @@ export function displayNameFor(name: string): string | null {
 }
 
 export interface ResolveResult {
-  /** ABI-encoded answer for the inner record call (wrapped for resolve()'s bytes return). */
+  /**
+   * The `bytes` return value of ENSIP-10 `resolve()`: the inner record call's
+   * return type ABI-encoded *directly* (`abi.encode(address|bytes|string)`) — NOT
+   * re-wrapped in an outer `bytes`. The client (UniversalResolver / viem) decodes
+   * this straight as the inner function's result, so an extra wrap would
+   * double-encode it (addr → an ABI offset, text → a length-prefixed blob).
+   */
   result: Hex;
 }
 
@@ -106,24 +112,19 @@ export async function handleResolve(callData: Hex, profiles: ProfileClient): Pro
 
       if (!wantsCoinType) {
         const addr = valid ? getAddress(raw) : ZERO_ADDRESS;
-        return { result: wrap(encodeAbiParameters([{ type: "address" }], [addr])) };
+        return { result: encodeAbiParameters([{ type: "address" }], [addr]) };
       }
       // addr(node, coinType): non-ETH or unset → empty bytes.
       const bytesAddr: Hex = valid ? (getAddress(raw).toLowerCase() as Hex) : "0x";
-      return { result: wrap(encodeAbiParameters([{ type: "bytes" }], [bytesAddr])) };
+      return { result: encodeAbiParameters([{ type: "bytes" }], [bytesAddr]) };
     }
     case "text": {
       const key = inner.args[1] as string;
       const value = profile ? textRecord(profile, key) : "";
-      return { result: wrap(encodeAbiParameters([{ type: "string" }], [value])) };
+      return { result: encodeAbiParameters([{ type: "string" }], [value]) };
     }
     default:
       // Unsupported record type → empty bytes (resolver returns nothing).
-      return { result: wrap("0x") };
+      return { result: "0x" };
   }
-}
-
-/** Wrap an inner answer as the `bytes` return value of `resolve(...)`. */
-function wrap(inner: Hex): Hex {
-  return encodeAbiParameters([{ type: "bytes" }], [inner]);
 }

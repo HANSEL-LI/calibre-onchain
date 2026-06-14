@@ -45,6 +45,17 @@ contract OffchainResolverStub is IExtendedResolver {
         }
     }
 
+    /// @dev ERC-165. The ENS UniversalResolver probes `supportsInterface` on the
+    /// nearest ancestor resolver and only performs ENSIP-10 wildcard resolution
+    /// when it returns true for `IExtendedResolver` (0x9061b923). Without this a
+    /// standards-compliant client (viem `getEnsAddress`, the UR) reverts with
+    /// `ResolverNotFound` for every `<name>.calibre.eth` subname even though
+    /// `resolve()` is implemented — so it is mandatory, not cosmetic.
+    function supportsInterface(bytes4 interfaceID) external pure returns (bool) {
+        return interfaceID == 0x01ffc9a7 // ERC-165 itself
+            || interfaceID == 0x9061b923; // IExtendedResolver (ENSIP-10)
+    }
+
     /// @dev ENSIP-10 entrypoint. Always defers to the offchain gateway.
     function resolve(bytes calldata name, bytes calldata data)
         external
