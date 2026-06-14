@@ -6,8 +6,11 @@
     "gg.calibre.brier",
     "gg.calibre.clan",
     "gg.calibre.rank",
+    "gg.calibre.resolved",
     "gg.calibre.riot",
     "gg.calibre.roi",
+    "gg.calibre.streak",
+    "gg.calibre.winrate",
     "url"
   ]
 }
