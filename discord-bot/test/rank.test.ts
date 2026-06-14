@@ -137,3 +137,22 @@ test("rankReader never requests roi/brier/position keys (privacy)", async () => 
   await reader.rankOf("priv.calibre.eth");
   assert.deepEqual(seenKeys, ["gg.calibre.rank"]);
 });
+
+// Live regression for the bug where the default client used a bare chain with no
+// UniversalResolver, so every real resolution threw "Chain does not support
+// contract ensUniversalResolver" — invisible to the stubbed tests above. This
+// builds the *real* viem-backed reader (no clientOverride) and resolves a name
+// over mainnet → CCIP-read → gateway. Network-gated (off by default, like the
+// calibre @llm tests): run with `ENS_LIVE_TEST=1 [ENS_RPC_URL=...] npm test`.
+test(
+  "rankReader resolves a real name over mainnet (no bare-chain regression)",
+  { skip: !process.env.ENS_LIVE_TEST },
+  async () => {
+    const rpc = process.env.ENS_RPC_URL ?? "https://ethereum-rpc.publicnode.com";
+    const parent = process.env.ENS_PARENT ?? "hicalibre.eth";
+    const name = process.env.ENS_LIVE_NAME ?? `calibre.${parent}`;
+    const reader = createRankReader(rpc, parent);
+    const tier = await reader.rankOf(name);
+    assert.ok(typeof tier === "string" && tier.length > 0, `expected a tier for ${name}, got ${tier}`);
+  },
+);

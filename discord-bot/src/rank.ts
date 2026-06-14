@@ -13,7 +13,8 @@
  * `gg.calibre.roi`, `gg.calibre.brier`, or any position/P&L data — those are
  * not rank, and roles must not leak trading activity.
  */
-import { type Chain, createPublicClient, http } from "viem";
+import { createPublicClient, http } from "viem";
+import { mainnet } from "viem/chains";
 import { normalize } from "viem/ens";
 
 // Canonical rank text-record key. Mirrors `calibre_ranking.RANK_KEY` /
@@ -79,9 +80,15 @@ export function createRankReader(
   const client: EnsClient =
     clientOverride ??
     (createPublicClient({
-      // Chain id/name are not load-bearing for ENS text resolution; the RPC
-      // endpoint determines the network. A minimal chain shape keeps viem happy.
-      chain: { id: 0, name: "ens", nativeCurrency: { name: "", symbol: "", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } } as Chain,
+      // ENS resolution needs the chain's UniversalResolver contract address:
+      // viem's getEnsText looks it up on `chain.contracts.ensUniversalResolver`
+      // and throws "Chain does not support contract ensUniversalResolver" for a
+      // bare chain. The calibre offchain resolver for the parent name is
+      // registered on Ethereum mainnet (Arc has no ENS registry), so name
+      // resolution always goes through mainnet's UniversalResolver, which then
+      // follows the EIP-3668 CCIP-read revert to the gateway. The RPC endpoint is
+      // still operator-configurable via `rpcUrl` (point it at a mainnet RPC).
+      chain: mainnet,
       transport: http(rpcUrl),
     }) as unknown as EnsClient);
 
