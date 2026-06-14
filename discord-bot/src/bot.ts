@@ -8,6 +8,7 @@
  * links; members re-`/link`.
  */
 import {
+  type CategoryChannel,
   ChannelType,
   type ChatInputCommandInteraction,
   Client,
@@ -21,6 +22,15 @@ import {
   type TextChannel,
 } from "discord.js";
 import type { BotConfig } from "./config.js";
+import {
+  type DesiredChannel,
+  desiredChannels,
+  fetchPublicMarkets,
+  fetchUpcomingMatches,
+  isManagedMatchChannelName,
+  pinnedMessageFor,
+  reconcileChannels,
+} from "./matches.js";
 import { isAcceptedName } from "./rank.js";
 import type { ProfileCard, RankReader } from "./rank.js";
 import {
@@ -240,6 +250,132 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     return r;
   }
 
+  /** Find a category channel by name, else create it (idempotent). */
+  async function ensureCategory(g: Guild, name: string): Promise<CategoryChannel | null> {
+    await g.channels.fetch();
+    const existing = g.channels.cache.find(
+      (c) => c?.type === ChannelType.GuildCategory && c.name === name,
+    ) as CategoryChannel | undefined;
+    if (existing) return existing;
+    try {
+      return await g.channels.create({
+        name,
+        type: ChannelType.GuildCategory,
+        reason: "calibre match channels",
+      });
+    } catch (err) {
+      console.error(`could not create category #${name} — does the bot have Manage Channels?`, err);
+      return null;
+    }
+  }
+
+  /** Upsert the pinned market message in a match channel (one managed pin). */
+  async function upsertPin(channel: TextChannel, content: string): Promise<void> {
+    try {
+      const pins = await channel.messages.fetchPinned();
+      const mine = pins.find((m) => m.author.id === client.user?.id);
+      if (mine) {
+        if (mine.content !== content) await mine.edit(content);
+        return;
+      }
+      const msg = await channel.send(content);
+      await msg.pin("calibre market link");
+    } catch (err) {
+      console.error(`could not pin in #${channel.name}`, err);
+    }
+  }
+
+  /** Create one match channel under the managed category, then post + pin. */
+  async function createMatchChannel(
+    g: Guild,
+    parentId: string,
+    desired: DesiredChannel,
+  ): Promise<void> {
+    try {
+      const channel = await g.channels.create({
+        name: desired.name,
+        type: ChannelType.GuildText,
+        parent: parentId,
+        topic: `${desired.match.team1} vs ${desired.match.team2}`,
+        reason: "calibre per-match channel (#580)",
+      });
+      await upsertPin(channel, pinnedMessageFor(desired.match, desired.market, config.calibreApiBase));
+    } catch (err) {
+      console.error(`could not create match channel #${desired.name}`, err);
+    }
+  }
+
+  /**
+   * Reconcile per-match channels: pull public matches + markets, create one
+   * channel per upcoming match (idempotent by deterministic name), refresh each
+   * pin, and archive channels whose match has left the upcoming window. All
+   * reads are public, no-auth. Errors are isolated so the role loop is unaffected.
+   *
+   * Managed = a bot-named (`-vs-…-<6hex>`) text channel under the active
+   * category; only those are ever archived. Don't manually create a same-shaped
+   * channel in the managed category — the bot would treat it as its own.
+   */
+  async function reconcileMatchChannels(): Promise<void> {
+    let matches: Awaited<ReturnType<typeof fetchUpcomingMatches>>;
+    let markets: Awaited<ReturnType<typeof fetchPublicMarkets>>;
+    try {
+      [matches, markets] = await Promise.all([
+        fetchUpcomingMatches(config.calibreApiBase),
+        fetchPublicMarkets(config.calibreApiBase),
+      ]);
+    } catch (err) {
+      console.error("match-channel fetch failed — skipping this pass", err);
+      return;
+    }
+
+    const g = await guild();
+    const active = await ensureCategory(g, config.matchCategoryName);
+    if (!active) return;
+
+    await g.channels.fetch();
+    // Managed = a per-match-named text channel currently under the active category.
+    const managed: TextChannel[] = [];
+    for (const c of g.channels.cache.values()) {
+      if (
+        c?.type === ChannelType.GuildText &&
+        c.parentId === active.id &&
+        isManagedMatchChannelName(c.name)
+      ) {
+        managed.push(c as TextChannel);
+      }
+    }
+    const byName = new Map(managed.map((c) => [c.name, c]));
+
+    const desired = desiredChannels(matches, markets);
+    const plan = reconcileChannels(
+      desired,
+      managed.map((c) => c.name),
+    );
+
+    for (const d of plan.create) {
+      await createMatchChannel(g, active.id, d);
+    }
+    for (const d of plan.keep) {
+      const ch = byName.get(d.name);
+      if (ch) await upsertPin(ch, pinnedMessageFor(d.match, d.market, config.calibreApiBase));
+    }
+    if (plan.archive.length > 0) {
+      const archive = await ensureCategory(g, config.matchArchiveCategoryName);
+      if (archive) {
+        for (const name of plan.archive) {
+          const ch = byName.get(name);
+          if (ch) {
+            try {
+              await ch.setParent(archive.id, { lockPermissions: false, reason: "calibre match settled/expired" });
+            } catch (err) {
+              console.error(`could not archive #${name}`, err);
+            }
+          }
+        }
+      }
+    }
+  }
+
   async function handleLink(interaction: ChatInputCommandInteraction): Promise<void> {
     const name = (interaction.options.getString("name", true) ?? "").trim().toLowerCase();
     if (!isAcceptedName(name, config.ensParent)) {
@@ -295,6 +431,9 @@ export function createBot(config: BotConfig, ranks: RankReader) {
         // (with a hint) and don't stop the bot from running role sync.
         if (!config.announceChannelId) await ensureTextChannel(g, config.announceChannelName);
         await ensureLounge(g, roleIds);
+        // First match-channel reconcile on boot — isolated so a calibre/Discord
+        // hiccup here never blocks role setup.
+        await reconcileMatchChannels();
       } catch (err) {
         console.error(
           "setup on ready failed — check the bot's role position (above tiers) + Manage Channels permission",
@@ -306,8 +445,9 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     await client.login(config.discordToken);
     setInterval(() => {
       void resyncAll();
+      void reconcileMatchChannels();
     }, config.resyncIntervalMs);
   }
 
-  return { client, links, start, resyncAll };
+  return { client, links, start, resyncAll, reconcileMatchChannels };
 }
