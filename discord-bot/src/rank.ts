@@ -21,21 +21,35 @@ import { normalize } from "viem/ens";
 export const RANK_TEXT_KEY = "gg.calibre.rank" as const;
 
 /**
- * Whether `name` is a top-level subname of `parent` we will resolve.
+ * Whether `name` is a subname of `parent` whose **leftmost label** we resolve.
  *
- * Accepts exactly `<label>.<parent>` (one label under the parent). Clan-nested
- * names (`<user>.<clan>.calibre.eth`) need W6.3 (#430); until then we degrade
- * gracefully and resolve top-level names only. Rejects the bare parent, foreign
- * suffixes, and empty labels. Pure — no network.
+ * Accepts any name ending in `.<parent>` with a label before the parent — both
+ * the flat user form `<user>.<parent>` and the clan-nested form
+ * `<user>.<clan>.<parent>` (and deeper). In every case the resolved leaf is the
+ * leftmost label (the user); the intermediate `<clan>` labels are namespacing,
+ * not a second lookup. (Clan-nesting was stubbed behind #430; #550 lifts the
+ * top-level-only restriction.)
+ *
+ * This is a resolution-contract boundary: a name is accepted here **iff** the
+ * gateway's {@link displayNameFor} would resolve it to a non-empty user leaf,
+ * computed by the *same* steps — lowercase, drop empty labels, require >2
+ * remaining labels, and require the (cleaned) name to end in the parent. Keeping
+ * the label-cleaning identical (empty labels dropped before counting) is what
+ * makes the bot accept exactly the set of names the gateway serves; a leading or
+ * doubled dot must not flip the two apart. Pure — no network.
  */
 export function isAcceptedName(name: string, parent: string): boolean {
-  const lname = name.trim().toLowerCase();
   const lparent = parent.trim().toLowerCase();
-  if (!lname.endsWith("." + lparent)) return false;
-  const head = lname.slice(0, lname.length - lparent.length - 1);
-  if (head.length === 0) return false;
-  // Exactly one label under the parent (no further dots) — top-level only.
-  if (head.includes(".")) return false;
+  // Mirror displayNameFor: split, drop empty labels (a leading/doubled dot is
+  // not a distinct label), then require the cleaned name to be a subname of the
+  // parent with at least one label (the user) in front of it.
+  const labels = name.trim().toLowerCase().split(".").filter((l) => l.length > 0);
+  const parentLabels = lparent.split(".").filter((l) => l.length > 0);
+  // Need a user leaf plus the parent labels: strictly more labels than parent.
+  if (labels.length <= parentLabels.length) return false;
+  // The trailing labels must be exactly the parent (foreign suffixes rejected).
+  const suffix = labels.slice(labels.length - parentLabels.length);
+  if (suffix.join(".") !== parentLabels.join(".")) return false;
   return true;
 }
 
