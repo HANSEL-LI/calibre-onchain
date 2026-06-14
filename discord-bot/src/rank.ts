@@ -20,6 +20,20 @@ import { normalize } from "viem/ens";
 // Canonical rank text-record key. Mirrors `calibre_ranking.RANK_KEY` /
 // `gateway` `gg.calibre.rank` — the one record this bot is allowed to read.
 export const RANK_TEXT_KEY = "gg.calibre.rank" as const;
+export const ROI_TEXT_KEY = "gg.calibre.roi" as const;
+export const BRIER_TEXT_KEY = "gg.calibre.brier" as const;
+
+/**
+ * The fields shown in the ephemeral `/link` card. ROI + Brier are read ONLY for
+ * this self-view (the linking member seeing their own public profile) — the
+ * Discord-role derivation stays rank-only ({@link RankReader.rankOf}) so a
+ * member's *roles* never leak trading activity.
+ */
+export interface ProfileCard {
+  rank: string | null;
+  roi: string | null;
+  brier: string | null;
+}
 
 /**
  * Whether `name` is a subname of `parent` whose **leftmost label** we resolve.
@@ -61,6 +75,13 @@ export interface RankReader {
    * normal miss — an unset record resolves to "").
    */
   rankOf(name: string): Promise<string | null>;
+  /**
+   * Read the public profile card (rank + roi + brier) for an accepted name, for
+   * the ephemeral `/link` reply. Returns null only for an unaccepted name; an
+   * accepted name with no records resolves every field to null. See
+   * {@link ProfileCard} for the privacy scoping.
+   */
+  cardOf(name: string): Promise<ProfileCard | null>;
 }
 
 export interface EnsClient {
@@ -99,6 +120,18 @@ export function createRankReader(
       const value = await client.getEnsText({ name: normalized, key: RANK_TEXT_KEY });
       if (value === null || value === undefined || value === "") return null;
       return value;
+    },
+    async cardOf(name: string): Promise<ProfileCard | null> {
+      if (!isAcceptedName(name, parent)) return null;
+      const normalized = normalize(name);
+      const clean = (v: string | null | undefined): string | null =>
+        v === null || v === undefined || v === "" ? null : v;
+      const [rank, roi, brier] = await Promise.all([
+        client.getEnsText({ name: normalized, key: RANK_TEXT_KEY }),
+        client.getEnsText({ name: normalized, key: ROI_TEXT_KEY }),
+        client.getEnsText({ name: normalized, key: BRIER_TEXT_KEY }),
+      ]);
+      return { rank: clean(rank), roi: clean(roi), brier: clean(brier) };
     },
   };
 }

@@ -8,6 +8,7 @@ import {
   legacyRoleNameForTier,
   reconcileRoles,
   roleNameForTier,
+  tierIndex,
 } from "../src/roles.js";
 
 test("seven ladder tiers in order", () => {
@@ -81,4 +82,15 @@ test("every tier has a style; only the top three are hoisted", () => {
   }
   const hoisted = LADDER_TIERS.filter((t) => TIER_STYLE[t].hoist);
   assert.deepEqual(hoisted, ["Sharp", "Seer", "Oracle"]);
+});
+
+test("tierIndex orders the ladder; -1 for null/unknown (promotion comparison)", () => {
+  assert.equal(tierIndex("Static"), 0);
+  assert.equal(tierIndex("Oracle"), 6);
+  assert.ok(tierIndex("Seer") > tierIndex("Edge"), "higher tier has greater index");
+  assert.equal(tierIndex(null), -1);
+  assert.equal(tierIndex("Unranked"), -1);
+  // A first-seen (null→Edge) reads as an increase; a demotion does not.
+  assert.ok(tierIndex("Edge") > tierIndex(null));
+  assert.ok(!(tierIndex("Read") > tierIndex("Seer")));
 });

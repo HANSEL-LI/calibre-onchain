@@ -25,6 +25,13 @@ export interface BotConfig {
   ensParent: string;
   /** Re-sync interval in milliseconds (periodic role reconcile). */
   resyncIntervalMs: number;
+  /** Explicit channel id for promotion shout-outs; if unset the bot ensures a
+   * text channel named {@link announceChannelName}. */
+  announceChannelId?: string;
+  /** Name of the promotion shout-out channel the bot ensures when no id is set. */
+  announceChannelName: string;
+  /** Name of the rank-gated lounge channel the bot ensures (Seer/Oracle only). */
+  loungeChannelName: string;
 }
 
 function req(env: NodeJS.ProcessEnv, name: string, fallback?: string): string {
@@ -43,5 +50,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     ensRpcUrl: req(env, "ENS_RPC_URL", "https://sepolia.gateway.tenderly.co"),
     ensParent: req(env, "ENS_PARENT", "calibre.eth").replace(/^\.+|\.+$/g, ""),
     resyncIntervalMs: Number.parseInt(req(env, "RESYNC_INTERVAL_MS", "300000"), 10),
+    announceChannelId:
+      env.ANNOUNCE_CHANNEL_ID && env.ANNOUNCE_CHANNEL_ID !== "" ? env.ANNOUNCE_CHANNEL_ID : undefined,
+    announceChannelName: req(env, "ANNOUNCE_CHANNEL_NAME", "rank-ups"),
+    loungeChannelName: req(env, "LOUNGE_CHANNEL_NAME", "oracles-lounge"),
   };
 }

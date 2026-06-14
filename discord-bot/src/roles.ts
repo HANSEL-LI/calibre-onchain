@@ -74,6 +74,14 @@ export function isTier(tier: string): tier is Tier {
   return TIER_SET.has(tier);
 }
 
+/**
+ * Ladder position of a tier (0 = Static … 6 = Oracle); -1 for null/unknown.
+ * Used to decide whether a reconcile crossed *upward* (a promotion to announce).
+ */
+export function tierIndex(tier: string | null): number {
+  return tier ? LADDER_TIERS.indexOf(tier as Tier) : -1;
+}
+
 export interface RoleDelta {
   /** Managed role names to add. */
   add: string[];

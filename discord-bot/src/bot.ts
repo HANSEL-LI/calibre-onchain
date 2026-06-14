@@ -8,24 +8,54 @@
  * links; members re-`/link`.
  */
 import {
+  ChannelType,
   type ChatInputCommandInteraction,
   Client,
+  EmbedBuilder,
   GatewayIntentBits,
   type Guild,
+  PermissionFlagsBits,
   REST,
   Routes,
   SlashCommandBuilder,
+  type TextChannel,
 } from "discord.js";
 import type { BotConfig } from "./config.js";
 import { isAcceptedName } from "./rank.js";
-import type { RankReader } from "./rank.js";
+import type { ProfileCard, RankReader } from "./rank.js";
 import {
   LADDER_TIERS,
   TIER_STYLE,
+  isTier,
   legacyRoleNameForTier,
   reconcileRoles,
   roleNameForTier,
+  tierIndex,
 } from "./roles.js";
+
+/** Tiers that can see the rank-gated lounge channel. */
+const LOUNGE_TIERS = ["Seer", "Oracle"] as const;
+
+/** Role colour for a tier label, falling back to the floor colour for unknowns. */
+function tierColor(tier: string | null): number {
+  return tier && isTier(tier) ? TIER_STYLE[tier].color : TIER_STYLE.Static.color;
+}
+
+/** The ephemeral self-view card for /link: rank + roi + brier in the tier colour. */
+function buildCardEmbed(name: string, card: ProfileCard | null, tier: string | null): EmbedBuilder {
+  const embed = new EmbedBuilder().setTitle(name).setColor(tierColor(tier));
+  if (!card || !card.rank) {
+    embed.setDescription("Linked, but no `gg.calibre.rank` record yet — no role assigned.");
+    return embed;
+  }
+  const icon = isTier(card.rank) ? `${TIER_STYLE[card.rank].emoji} ` : "";
+  embed.addFields(
+    { name: "Rank", value: `${icon}${card.rank}`, inline: true },
+    { name: "ROI", value: card.roi ?? "—", inline: true },
+    { name: "Brier skill", value: card.brier ?? "—", inline: true },
+  );
+  return embed;
+}
 
 export const LINK_COMMAND = new SlashCommandBuilder()
   .setName("link")
@@ -114,9 +144,100 @@ export function createBot(config: BotConfig, ranks: RankReader) {
   const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
   const links: LinkRegistry = new Map();
   let roleIds: Map<string, string> | null = null;
+  // Last tier we observed per member, so a reconcile that crosses *upward* fires
+  // a one-time promotion shout-out. Demo-scoped (in-memory, like the link map).
+  const lastTier = new Map<string, string | null>();
 
   async function guild(): Promise<Guild> {
     return client.guilds.fetch(config.guildId);
+  }
+
+  /** Find an existing text channel by name, else create it (needs Manage Channels). */
+  async function ensureTextChannel(g: Guild, name: string): Promise<TextChannel | null> {
+    await g.channels.fetch();
+    const existing = g.channels.cache.find(
+      (c) => c?.type === ChannelType.GuildText && c.name === name,
+    ) as TextChannel | undefined;
+    if (existing) return existing;
+    try {
+      return await g.channels.create({ name, type: ChannelType.GuildText, reason: "calibre rank bot" });
+    } catch (err) {
+      console.error(`could not create #${name} — does the bot have the Manage Channels permission?`, err);
+      return null;
+    }
+  }
+
+  /** Resolve the shout-out channel: explicit id if configured, else the named one. */
+  async function announceChannel(g: Guild): Promise<TextChannel | null> {
+    if (config.announceChannelId) {
+      const ch = await g.channels.fetch(config.announceChannelId).catch(() => null);
+      return ch && ch.type === ChannelType.GuildText ? (ch as TextChannel) : null;
+    }
+    return ensureTextChannel(g, config.announceChannelName);
+  }
+
+  /** Create the Seer/Oracle-only lounge if it doesn't exist (idempotent). */
+  async function ensureLounge(g: Guild, ids: Map<string, string>): Promise<void> {
+    await g.channels.fetch();
+    const name = config.loungeChannelName;
+    if (g.channels.cache.find((c) => c?.type === ChannelType.GuildText && c.name === name)) return;
+    const overwrites: { id: string; allow?: bigint[]; deny?: bigint[] }[] = [
+      { id: g.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    ];
+    for (const tier of LOUNGE_TIERS) {
+      const id = ids.get(tier);
+      if (id) overwrites.push({ id, allow: [PermissionFlagsBits.ViewChannel] });
+    }
+    if (client.user) {
+      overwrites.push({
+        id: client.user.id,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+      });
+    }
+    try {
+      await g.channels.create({
+        name,
+        type: ChannelType.GuildText,
+        topic: "Seer & Oracle only — earned via your calibre rank.",
+        permissionOverwrites: overwrites,
+        reason: "calibre rank-gated lounge",
+      });
+    } catch (err) {
+      console.error(`could not create #${name} — needs Manage Channels + bot role above the tier roles`, err);
+    }
+  }
+
+  /** Post a promotion shout-out embed in the announce channel. */
+  async function announcePromotion(g: Guild, memberId: string, from: string | null, to: string): Promise<void> {
+    const ch = await announceChannel(g);
+    if (!ch) return;
+    const icon = isTier(to) ? `${TIER_STYLE[to].emoji} ` : "🏆 ";
+    const embed = new EmbedBuilder()
+      .setColor(tierColor(to))
+      .setDescription(`${icon}<@${memberId}> climbed to **${to}**${from ? ` — up from ${from}` : ""}.`);
+    try {
+      await ch.send({ embeds: [embed] });
+    } catch (err) {
+      console.error("promotion announce failed", err);
+    }
+  }
+
+  /** Reconcile a member's role and fire a shout-out if their tier crossed upward. */
+  async function applyAndAnnounce(
+    g: Guild,
+    memberId: string,
+    ensName: string,
+    ids: Map<string, string>,
+  ): Promise<{ tier: string | null }> {
+    const r = await syncMember(g, memberId, ensName, ranks, ids);
+    const prev = lastTier.get(memberId);
+    lastTier.set(memberId, r.tier);
+    // Only announce a genuine increase from a previously-known tier (never on the
+    // first observation, and never on a demotion).
+    if (prev !== undefined && tierIndex(r.tier) > tierIndex(prev)) {
+      await announcePromotion(g, memberId, prev, r.tier as string);
+    }
+    return r;
   }
 
   async function handleLink(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -132,12 +253,9 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     links.set(interaction.user.id, name);
     const g = await guild();
     roleIds ??= await ensureManagedRoles(g);
-    const r = await syncMember(g, interaction.user.id, name, ranks, roleIds);
-    await interaction.editReply(
-      r.tier
-        ? `Linked \`${name}\` → rank **${r.tier}**.`
-        : `Linked \`${name}\`, but it has no \`gg.calibre.rank\` record yet — no role assigned.`,
-    );
+    const card = await ranks.cardOf(name);
+    const r = await applyAndAnnounce(g, interaction.user.id, name, roleIds);
+    await interaction.editReply({ embeds: [buildCardEmbed(name, card, r.tier)] });
   }
 
   /** Re-resolve every linked member and reconcile roles. Errors per-member are isolated. */
@@ -147,7 +265,7 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     roleIds ??= await ensureManagedRoles(g);
     for (const [memberId, ensName] of links) {
       try {
-        await syncMember(g, memberId, ensName, ranks, roleIds);
+        await applyAndAnnounce(g, memberId, ensName, roleIds);
       } catch {
         // A single member's failure (left guild, transient RPC) must not stall the loop.
       }
@@ -171,10 +289,15 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     // bot's role sits below the tier roles, the edits 403 — log a clear hint.
     client.once("ready", async () => {
       try {
-        roleIds = await ensureManagedRoles(await guild());
+        const g = await guild();
+        roleIds = await ensureManagedRoles(g);
+        // Best-effort channel setup — needs Manage Channels; failures are logged
+        // (with a hint) and don't stop the bot from running role sync.
+        if (!config.announceChannelId) await ensureTextChannel(g, config.announceChannelName);
+        await ensureLounge(g, roleIds);
       } catch (err) {
         console.error(
-          "ensureManagedRoles failed on ready — is the bot's own role positioned ABOVE the tier roles?",
+          "setup on ready failed — check the bot's role position (above tiers) + Manage Channels permission",
           err,
         );
       }
