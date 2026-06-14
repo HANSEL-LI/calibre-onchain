@@ -41,7 +41,11 @@ export function createApp(config: GatewayConfig) {
     next();
   });
 
-  app.use(express.json({ limit: "32kb" }));
+  // Parse every body as JSON regardless of Content-Type: viem's `ccipRequest`
+  // (the browser CCIP client) POSTs its `{ sender, data }` body WITHOUT an
+  // `application/json` content-type, so the default content-type gate would skip
+  // it and the handler would 400 on an empty body. (#633)
+  app.use(express.json({ limit: "32kb", type: () => true }));
 
   const profiles = createProfileClient(config.apiBase);
   const clans = createClanClient(config.apiBase);
