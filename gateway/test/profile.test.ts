@@ -17,14 +17,16 @@ const CLAN: ClanProfile = {
   top_member: "demo",
 };
 
-test("clan record keys are the four gg.calibre.clan.* aggregate keys", () => {
+test("clan record keys are the gg.calibre.clan.* aggregate keys", () => {
   assert.deepEqual(
     new Set(Object.keys(CLAN_TEXT_RECORD_KEYS)),
     new Set([
       "gg.calibre.clan.size",
       "gg.calibre.clan.avgrank",
       "gg.calibre.clan.brier",
+      "gg.calibre.clan.median",
       "gg.calibre.clan.roi",
+      "gg.calibre.clan.top",
     ]),
   );
 });
@@ -36,15 +38,26 @@ test("isClanRecordKey distinguishes clan keys from user keys", () => {
   assert.equal(isClanRecordKey("gg.calibre.rank"), false);
 });
 
-test("clanTextRecord stringifies each field; null brier/roi → empty", () => {
+test("clanTextRecord stringifies each field; null brier/median/roi/top → empty", () => {
   assert.equal(clanTextRecord(CLAN, "gg.calibre.clan.size"), "7");
   assert.equal(clanTextRecord(CLAN, "gg.calibre.clan.avgrank"), "Edge");
   assert.equal(clanTextRecord(CLAN, "gg.calibre.clan.brier"), "0.31");
+  assert.equal(clanTextRecord(CLAN, "gg.calibre.clan.median"), "0.28");
   assert.equal(clanTextRecord(CLAN, "gg.calibre.clan.roi"), "0.42");
+  assert.equal(clanTextRecord(CLAN, "gg.calibre.clan.top"), "demo");
 
-  const unscored: ClanProfile = { ...CLAN, brier_skill: null, roi: null };
+  const unscored: ClanProfile = {
+    ...CLAN,
+    brier_skill: null,
+    median_brier_skill: null,
+    roi: null,
+    top_member: null,
+  };
   assert.equal(clanTextRecord(unscored, "gg.calibre.clan.brier"), "");
+  assert.equal(clanTextRecord(unscored, "gg.calibre.clan.median"), "");
   assert.equal(clanTextRecord(unscored, "gg.calibre.clan.roi"), "");
+  // top_member is the highest-skill member's display_name; none scored → empty.
+  assert.equal(clanTextRecord(unscored, "gg.calibre.clan.top"), "");
   // size is always present even when unscored.
   assert.equal(clanTextRecord(unscored, "gg.calibre.clan.size"), "7");
 });

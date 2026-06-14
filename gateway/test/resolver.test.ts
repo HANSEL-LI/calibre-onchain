@@ -242,28 +242,42 @@ test("bare clan name with no matching user resolves clan-aggregate records", asy
   assert.equal(unwrapText(result), "0.31");
 });
 
-test("clan size / avgrank / roi map through", async () => {
+test("clan size / avgrank / brier / median / roi / top map through", async () => {
   const clans = stubClanClient({ sharks: SHARKS_CLAN });
   const key = (k: string) =>
     encodeFunctionData({ abi: RECORD_ABI, functionName: "text", args: [NODE, k] });
-  assert.equal(
+  const resolveKey = async (k: string) =>
     unwrapText(
-      (await handleResolve(resolveCall("sharks.calibre.eth", key("gg.calibre.clan.size")), stubClient({}), clans)).result,
-    ),
-    "7",
-  );
-  assert.equal(
+      (await handleResolve(resolveCall("sharks.calibre.eth", key(k)), stubClient({}), clans)).result,
+    );
+  assert.equal(await resolveKey("gg.calibre.clan.size"), "7");
+  assert.equal(await resolveKey("gg.calibre.clan.avgrank"), "Edge");
+  assert.equal(await resolveKey("gg.calibre.clan.brier"), "0.31");
+  assert.equal(await resolveKey("gg.calibre.clan.median"), "0.28");
+  assert.equal(await resolveKey("gg.calibre.clan.roi"), "0.42");
+  assert.equal(await resolveKey("gg.calibre.clan.top"), "demo");
+});
+
+test("clan top/median on an unscored clan resolve to empty (no oracle)", async () => {
+  // A clan with no scored members: top_member/median/brier/roi are null → "".
+  const unscored: ClanProfile = {
+    ...SHARKS_CLAN,
+    brier_skill: null,
+    median_brier_skill: null,
+    roi: null,
+    top_member: null,
+  };
+  const clans = stubClanClient({ sharks: unscored });
+  const key = (k: string) =>
+    encodeFunctionData({ abi: RECORD_ABI, functionName: "text", args: [NODE, k] });
+  const resolveKey = async (k: string) =>
     unwrapText(
-      (await handleResolve(resolveCall("sharks.calibre.eth", key("gg.calibre.clan.avgrank")), stubClient({}), clans)).result,
-    ),
-    "Edge",
-  );
-  assert.equal(
-    unwrapText(
-      (await handleResolve(resolveCall("sharks.calibre.eth", key("gg.calibre.clan.roi")), stubClient({}), clans)).result,
-    ),
-    "0.42",
-  );
+      (await handleResolve(resolveCall("sharks.calibre.eth", key(k)), stubClient({}), clans)).result,
+    );
+  assert.equal(await resolveKey("gg.calibre.clan.top"), "");
+  assert.equal(await resolveKey("gg.calibre.clan.median"), "");
+  // size stays populated for an unscored-but-existing clan.
+  assert.equal(await resolveKey("gg.calibre.clan.size"), "7");
 });
 
 test("a real user wins over a same-label clan (user-first disambiguation)", async () => {

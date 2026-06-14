@@ -104,7 +104,9 @@ export const CLAN_TEXT_RECORD_KEYS = {
   "gg.calibre.clan.size": (c: ClanProfile) => String(c.size),
   "gg.calibre.clan.avgrank": (c: ClanProfile) => c.avg_rank,
   "gg.calibre.clan.brier": (c: ClanProfile) => fmtNum(c.brier_skill),
+  "gg.calibre.clan.median": (c: ClanProfile) => fmtNum(c.median_brier_skill),
   "gg.calibre.clan.roi": (c: ClanProfile) => fmtNum(c.roi),
+  "gg.calibre.clan.top": (c: ClanProfile) => c.top_member ?? "",
 } as const satisfies Record<string, (c: ClanProfile) => string>;
 
 export type ClanTextRecordKey = keyof typeof CLAN_TEXT_RECORD_KEYS;

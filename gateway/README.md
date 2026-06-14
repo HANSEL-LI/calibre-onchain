@@ -94,7 +94,9 @@ the canonical user-key drift contract above (they describe a clan, not a user):
 | `text(node, "gg.calibre.clan.size")` | `size` (member count) |
 | `text(node, "gg.calibre.clan.avgrank")` | `avg_rank` (tier of mean member skill) |
 | `text(node, "gg.calibre.clan.brier")` | `brier_skill` (pooled clan Brier) |
+| `text(node, "gg.calibre.clan.median")` | `median_brier_skill` (median of scored members) |
 | `text(node, "gg.calibre.clan.roi")` | `roi` (aggregate) |
+| `text(node, "gg.calibre.clan.top")` | `top_member` (highest-skill member's display_name) |
 
 The existing single `gg.calibre.clan` user key (a *user's* clan label) is
 distinct from these dotted aggregate keys, so the two namespaces don't collide.
