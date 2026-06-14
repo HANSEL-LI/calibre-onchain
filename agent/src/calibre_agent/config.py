@@ -53,10 +53,23 @@ class AgentConfig:
     usdc_address: str = ""  # the 6-decimal ERC-20 USDC on Arc
 
     # --- signer (one of these selects the signer; server-wallet wins) ---
+    # The Dynamic MPC server wallet (#618) uses the documented `dynamic-wallet-sdk`
+    # Python client; the sensitive material (DYNAMIC_API_KEY and an optional wallet
+    # password) is read from the env as a SecretRef in build_signer, NOT stored on
+    # this frozen dataclass. Only non-sensitive metadata lives here.
     dynamic_environment_id: str = ""
     dynamic_api_key: str = ""
-    dynamic_wallet_id: str = ""  # an existing Dynamic server wallet, if any
-    dynamic_api_base: str = "https://app.dynamicauth.com/api/v0"
+    """The Dynamic API token (sensitive). Presence here selects the server-wallet
+    path; build_signer prefers $DYNAMIC_API_KEY via a SecretRef so it is never
+    logged. Kept on config only so `uses_server_wallet()` can gate on it."""
+    dynamic_wallet_id: str = ""  # an existing Dynamic MPC wallet id, if any
+    dynamic_account_address: str = ""
+    """The existing wallet's on-chain address. Supplying both this and
+    `dynamic_wallet_id` adopts an already-provisioned wallet (no re-provision);
+    leaving them empty provisions a fresh MPC wallet at startup."""
+    dynamic_threshold_scheme: str = "TWO_OF_TWO"
+    """MPC threshold signature scheme passed to create_wallet_account
+    (TWO_OF_TWO default; TWO_OF_THREE / THREE_OF_FIVE also supported by Dynamic)."""
     agent_private_key: str = ""  # local-key fallback (testnet only)
 
     # --- voucher source (W1.2 buy leg; one of these selects the source) ---
@@ -115,9 +128,10 @@ class AgentConfig:
             dynamic_environment_id=os.environ.get("DYNAMIC_ENVIRONMENT_ID", ""),
             dynamic_api_key=os.environ.get("DYNAMIC_API_KEY", ""),
             dynamic_wallet_id=os.environ.get("DYNAMIC_WALLET_ID", ""),
-            dynamic_api_base=os.environ.get(
-                "DYNAMIC_API_BASE", cls.dynamic_api_base
-            ).rstrip("/"),
+            dynamic_account_address=os.environ.get("DYNAMIC_ACCOUNT_ADDRESS", ""),
+            dynamic_threshold_scheme=os.environ.get(
+                "DYNAMIC_THRESHOLD_SCHEME", cls.dynamic_threshold_scheme
+            ),
             agent_private_key=os.environ.get("AGENT_PRIVATE_KEY", ""),
             calibre_voucher_api_base=os.environ.get(
                 "CALIBRE_VOUCHER_API_BASE", ""

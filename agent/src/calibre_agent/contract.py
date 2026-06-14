@@ -204,6 +204,12 @@ class MarketClient:
             "from": self._signer.address,
             "nonce": nonce,
         })
+        # A broadcasting signer (the Dynamic MPC SDK) signs *and* broadcasts in
+        # one MPC round-trip and returns the tx hash; a raw-bytes signer
+        # (eth-account) returns serialized bytes for us to broadcast. Prefer the
+        # broadcasting path when the signer provides it (signer.py seam).
+        if hasattr(self._signer, "send_transaction"):
+            return self._signer.send_transaction(tx)
         raw = self._signer.sign_transaction(tx)
         tx_hash = self._w3.eth.send_raw_transaction(raw)
         return tx_hash.hex()
