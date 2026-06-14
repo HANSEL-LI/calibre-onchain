@@ -1,24 +1,22 @@
 /**
- * Discord runtime: the `/link` slash command, the in-memory link registry, and
- * the periodic re-sync loop. All rank data comes from ENS (via {@link
- * RankReader}); the bot makes ZERO calibre-API calls.
+ * Discord runtime: the in-memory identity registry and the periodic re-sync
+ * loop. RANK data comes from ENS (via {@link RankReader}); the bot makes ZERO
+ * calibre-API *pulls*. IDENTITY arrives via a verified, signed push from
+ * calibre (#582, see {@link createIdentityServer}) — there is no user-run
+ * `/link` (it was manual and spoofable: anyone could claim any name).
  *
  * Demo-scoped (issue: "hosting beyond the demo window" is out of scope): the
  * `<discord member id> → <ens name>` registry lives in memory. A restart drops
- * links; members re-`/link`.
+ * it; calibre re-pushes on the next connect / the operator replays the pushes.
  */
 import {
   type CategoryChannel,
   ChannelType,
-  type ChatInputCommandInteraction,
   Client,
   EmbedBuilder,
   GatewayIntentBits,
   type Guild,
   PermissionFlagsBits,
-  REST,
-  Routes,
-  SlashCommandBuilder,
   type TextChannel,
 } from "discord.js";
 import type { BotConfig } from "./config.js";
@@ -31,8 +29,7 @@ import {
   pinnedMessageFor,
   reconcileChannels,
 } from "./matches.js";
-import { isAcceptedName } from "./rank.js";
-import type { ProfileCard, RankReader } from "./rank.js";
+import type { RankReader } from "./rank.js";
 import {
   LADDER_TIERS,
   TIER_STYLE,
@@ -51,30 +48,8 @@ function tierColor(tier: string | null): number {
   return tier && isTier(tier) ? TIER_STYLE[tier].color : TIER_STYLE.Static.color;
 }
 
-/** The ephemeral self-view card for /link: rank + roi + brier in the tier colour. */
-function buildCardEmbed(name: string, card: ProfileCard | null, tier: string | null): EmbedBuilder {
-  const embed = new EmbedBuilder().setTitle(name).setColor(tierColor(tier));
-  if (!card || !card.rank) {
-    embed.setDescription("Linked, but no `gg.calibre.rank` record yet — no role assigned.");
-    return embed;
-  }
-  const icon = isTier(card.rank) ? `${TIER_STYLE[card.rank].emoji} ` : "";
-  embed.addFields(
-    { name: "Rank", value: `${icon}${card.rank}`, inline: true },
-    { name: "ROI", value: card.roi ?? "—", inline: true },
-    { name: "Brier skill", value: card.brier ?? "—", inline: true },
-  );
-  return embed;
-}
-
-export const LINK_COMMAND = new SlashCommandBuilder()
-  .setName("link")
-  .setDescription("Link your calibre ENS name; the bot reads your rank from ENS and assigns a role.")
-  .addStringOption((o) =>
-    o.setName("name").setDescription("e.g. demo.calibre.eth").setRequired(true),
-  );
-
-/** In-memory member→ENS-name registry. Demo-scoped (no persistence). */
+/** In-memory member→ENS-name registry. Demo-scoped (no persistence).
+ * Populated by the verified identity push (#582), not by users. */
 export type LinkRegistry = Map<string, string>;
 
 /**
@@ -376,22 +351,19 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     }
   }
 
-  async function handleLink(interaction: ChatInputCommandInteraction): Promise<void> {
-    const name = (interaction.options.getString("name", true) ?? "").trim().toLowerCase();
-    if (!isAcceptedName(name, config.ensParent)) {
-      await interaction.reply({
-        content: `That isn't a \`<name>.${config.ensParent}\` subname I can resolve.`,
-        ephemeral: true,
-      });
-      return;
-    }
-    await interaction.deferReply({ ephemeral: true });
-    links.set(interaction.user.id, name);
+  /**
+   * Apply a VERIFIED identity from the calibre push (#582): record
+   * `memberId -> ensName` in the registry and immediately reconcile that one
+   * member's role from ENS. Idempotent; errors propagate to the caller (the
+   * ingest server maps them to a 500). This is the only writer of the registry
+   * now that `/link` is gone — identity is always calibre-verified, never
+   * self-asserted.
+   */
+  async function linkMember(memberId: string, ensName: string): Promise<void> {
+    links.set(memberId, ensName);
     const g = await guild();
     roleIds ??= await ensureManagedRoles(g);
-    const card = await ranks.cardOf(name);
-    const r = await applyAndAnnounce(g, interaction.user.id, name, roleIds);
-    await interaction.editReply({ embeds: [buildCardEmbed(name, card, r.tier)] });
+    await applyAndAnnounce(g, memberId, ensName, roleIds);
   }
 
   /** Re-resolve every linked member and reconcile roles. Errors per-member are isolated. */
@@ -409,19 +381,10 @@ export function createBot(config: BotConfig, ranks: RankReader) {
   }
 
   async function start(): Promise<void> {
-    const rest = new REST({ version: "10" }).setToken(config.discordToken);
-    await rest.put(Routes.applicationGuildCommands(config.discordAppId, config.guildId), {
-      body: [LINK_COMMAND.toJSON()],
-    });
-
-    client.on("interactionCreate", async (interaction) => {
-      if (interaction.isChatInputCommand() && interaction.commandName === "link") {
-        await handleLink(interaction);
-      }
-    });
+    // No slash commands: identity is pushed by calibre (#582), not user-run.
 
     // Apply role styling (names, colours, hoist, icons) as soon as we're online,
-    // so a deploy converges the guild without waiting for the first /link. If the
+    // so a deploy converges the guild without waiting for the first push. If the
     // bot's role sits below the tier roles, the edits 403 — log a clear hint.
     client.once("ready", async () => {
       try {
@@ -449,5 +412,5 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     }, config.resyncIntervalMs);
   }
 
-  return { client, links, start, resyncAll, reconcileMatchChannels };
+  return { client, links, start, resyncAll, reconcileMatchChannels, linkMember };
 }
