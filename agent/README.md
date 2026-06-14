@@ -63,7 +63,8 @@ tx-signing identity. So the agent **obtains** a signed voucher via a
 | Inventory cap | `AGENT_INVENTORY_CAP_SETS` | `10` | never buy past this many net sets — caps total USDC at risk |
 | Price band | `AGENT_BAND_LO_MICRO` / `AGENT_BAND_HI_MICRO` | `500` / `9500` | skip degenerate near-0 / near-1 priors |
 | Spread | `AGENT_SPREAD_MICRO` | `200` | half-spread the maker advertises around the prior |
-| Kill-switch | `AGENT_KILL_SWITCH_FILE` | (unset) | if the file exists, the loop halts new actions each tick |
+| Kill-switch | `AGENT_KILL_SWITCH_FILE` | (unset) | if the file exists, the loop halts new actions each tick (also written by the MPC policy-violation webhook, #619) |
+| MPC policy | Dynamic dashboard + `DYNAMIC_WEBHOOK_SECRET` | (unset) | TEE pre-sign value limit + contract allowlist; a violation webhook kills the agent (see below) |
 | Demo cap | `AGENT_MAX_ITERATIONS` | `0` (∞) | stop after N ticks |
 | Dry run | `AGENT_DRY_RUN` | `true` | log intended actions without sending tx |
 
@@ -121,6 +122,63 @@ uses. Swapping signers never touches the strategy or loop.
 > real values (and the KMS binding) in your own environment. The live-testnet-buy
 > success check is owner/booth work; the SDK contract is covered by faithful-fake
 > unit tests in `tests/test_signer.py`.
+
+## MPC policies + violation webhook (#619)
+
+On top of the server wallet (#618), Dynamic can enforce **MPC policies** in the
+TEE **before** signing: a transaction that exceeds a per-token value limit or
+touches a non-allowlisted address is rejected *pre-sign*, and Dynamic emits a
+`waas.policy.violation` webhook. This bounds a buggy/compromised agent at the
+**signing layer**, not just in app code — defense-in-depth on top of the
+inventory cap + kill-switch above.
+
+### Owner step — create the policy rules in the Dynamic dashboard
+
+The rules themselves are created in the **Dynamic dashboard** (it needs dashboard
+credentials, so it cannot be scripted from this repo). Create these on the
+agent's server wallet ([policies docs](https://www.dynamic.xyz/docs/overview/wallets/embedded-wallets/mpc/policies)):
+
+1. **Allowlist (whitelist mode).** Only allow rules pass; everything else is
+   blocked. Allowlist exactly two addresses on Arc:
+   - the deployed **`CalibreMarket`** contract (`CALIBRE_MARKET_ADDRESS`), and
+   - the **Arc USDC** token (`ARC_USDC_ADDRESS`) — the agent `approve`s it.
+
+   > Policies evaluate **every** address in a transaction's execution path: if a
+   > listed address is a **proxy**, allowlist its implementation contract too, or
+   > the call is rejected.
+2. **Value limit (per token = USDC).** Add a value limit so a single transaction
+   can move at most `inventory_cap_sets * usdcUnit` USDC base units — the same
+   bound the loop's inventory cap enforces, now also enforced pre-sign. (For a
+   native-token limit you'd leave the token address blank; here the limit is on
+   the USDC ERC-20.)
+
+### Webhook handler (built here)
+
+`calibre_agent.policy_webhook.handle_webhook(raw_body, signature_header, *,
+secret, kill_switch_file, on_violation=None)` is the handler a thin web shim
+(Flask / FastAPI / serverless function) calls with the raw request body + the
+`x-dynamic-signature` header. The agent itself ships **no web framework
+dependency**; the handler is framework-agnostic stdlib.
+
+- **Signature verification** is faithful to Dynamic's
+  [documented scheme](https://www.dynamic.xyz/docs/recipes/webhooks-signature-validation):
+  `HMAC-SHA256` over the **raw request body** under `DYNAMIC_WEBHOOK_SECRET`,
+  hex-encoded and prefixed `sha256=`, compared in constant time. An
+  unsigned/badly-signed/tampered/non-JSON delivery is **rejected** (caller returns
+  HTTP 401) and does nothing. We HMAC the raw bytes as received, never a
+  re-serialized dict — the docs warn the payload structure must match byte-for-byte.
+- On a **verified `waas.policy.violation`** the handler logs the violation
+  (`reasonCode`, `deniedAddresses`, `asset`, `walletId`, `messageId`) and **kills
+  the agent** by writing `AGENT_KILL_SWITCH_FILE`, so `loop.run` halts new actions
+  on the next tick — reusing the existing kill mechanism, not a parallel one. Any
+  verified non-violation event (e.g. `wallet.created`) is a **no-op**.
+
+Set `DYNAMIC_WEBHOOK_SECRET` (the per-webhook secret from the dashboard) and
+`AGENT_KILL_SWITCH_FILE` to wire it up. Covered by faithful-fake unit tests in
+`tests/test_policy_webhook.py` (the test signs payloads the way the real Dynamic
+sender does). The live success check — a real over-limit / non-allowlisted tx
+being rejected pre-sign and firing the webhook — needs the dashboard rules
+applied, a funded server wallet, and a public webhook URL: owner/booth work.
 
 ## Voucher source: calibre signer (with a local-key fallback)
 
