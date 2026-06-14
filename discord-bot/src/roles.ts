@@ -38,12 +38,14 @@ export function legacyRoleNameForTier(tier: Tier): string {
 }
 
 /**
- * Per-tier presentation. `color` is the Discord role colour (0xRRGGBB) on the
- * prism ladder — cool→warm as prestige climbs, gold at the apex. `hoist` shows
- * the role as its own group in the member sidebar; only the top three ranks are
- * hoisted so elite status stands out without cluttering the list. `emoji` is a
- * unicode role icon (best-effort — requires guild Boost level 2, applied in a
- * try/catch so non-boosted guilds simply skip it).
+ * Per-tier presentation. `color` is the Discord role colour (0xRRGGBB), drawn
+ * from the website palette (`style.css`): muted slate → ice-blue brand accent as
+ * prestige climbs, then a warm break for the apex — gold `Seer` → radiant
+ * near-white `Oracle`. `hoist` shows the role as its own group in the member
+ * sidebar; only the top three ranks are hoisted so elite status stands out
+ * without cluttering the list. `emoji` is a unicode role icon (best-effort —
+ * requires guild Boost level 2, applied in a try/catch so non-boosted guilds
+ * simply skip it).
  */
 export interface TierStyle {
   color: number;
@@ -52,13 +54,13 @@ export interface TierStyle {
 }
 
 export const TIER_STYLE: Record<Tier, TierStyle> = {
-  Static: { color: 0x6e7178, hoist: false, emoji: "▪️" },
-  Hunch: { color: 0x2fa572, hoist: false, emoji: "🌱" },
-  Read: { color: 0x3b9dd6, hoist: false, emoji: "👁️" },
-  Edge: { color: 0x7c5cfc, hoist: false, emoji: "⚡" },
-  Sharp: { color: 0xe0457b, hoist: true, emoji: "🎯" },
-  Seer: { color: 0xf0922b, hoist: true, emoji: "🔮" },
-  Oracle: { color: 0xf5c518, hoist: true, emoji: "👑" },
+  Static: { color: 0x6b7a8d, hoist: false, emoji: "▪️" }, // --label-muted
+  Hunch: { color: 0x999eaa, hoist: false, emoji: "🌱" }, // --s200
+  Read: { color: 0xc0c4ce, hoist: false, emoji: "👁️" }, // --s100
+  Edge: { color: 0x8ecfff, hoist: false, emoji: "⚡" }, // --accent-mid
+  Sharp: { color: 0xa8d4ff, hoist: true, emoji: "🎯" }, // --ob-accent-bright
+  Seer: { color: 0xf5c518, hoist: true, emoji: "🔮" }, // gold apex accent
+  Oracle: { color: 0xe9eef5, hoist: true, emoji: "👑" }, // radiant near-white
 };
 
 /** Every role name this bot manages — exactly the per-tier roles, nothing else. */
