@@ -1,0 +1,17 @@
+{
+  "name": "@calibre-onchain/parity",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-package parity harness: asserts the Discord bot's isAcceptedName (discord-bot/src/rank.ts) and the gateway's displayNameFor resolvable-leaf (gateway/src/resolver.ts) agree on which ENS names resolve to a non-empty user leaf, against one shared case table. Fails red on drift between the two independently-deployed services (#553).",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "tsc --noEmit -p tsconfig.json && node --test --import tsx \"test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^20.0.0",
+    "viem": "^2.21.0"
+  }
+}
