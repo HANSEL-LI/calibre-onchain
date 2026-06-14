@@ -5,12 +5,19 @@ mirrors a points-market resolution onto the Arc ``CalibreMarket`` contract. The
 client's settlement inputs are ``(chain_market_id, outcome)`` and nothing more —
 no LMSR state, points, or ledger internals cross the public/private boundary.
 
-Three methods, all signed with the resolver key (``onlyResolver`` on the
-contract):
+Four methods, all signed with the resolver key:
 
 - ``create_market(chain_market_id)`` → ``createMarket(uint256)``
 - ``seed_inventory(chain_market_id, sets)`` → ``seedInventory(uint256, uint256)``
 - ``resolve(chain_market_id, outcome)`` → ``resolve(uint256, uint8)``
+- ``redeem(chain_market_id)`` → ``redeem(uint256)``
+
+The first three are ``onlyResolver``; ``redeem`` is permissionless (any holder
+redeems its own winning shares). The resolver key is the contract
+``counterparty`` (same EOA per deploy), so ``redeem`` reclaims the house's own
+seeded inventory back to USDC after a market resolves — closing the loop
+``seed_inventory`` opens so locked backing returns to the counterparty instead
+of stranding in a resolved market.
 
 ``outcome`` is the points-side string ``"yes"`` / ``"no"``; it maps to the
 contract's ``Outcome`` enum **YES = 1, NO = 2** (``UNRESOLVED = 0`` is rejected
@@ -24,10 +31,11 @@ created market has zero counterparty inventory and every ``buy`` reverts
 ``InsufficientShares`` — create + seed are the two on-chain steps a market needs
 before it is tradeable.
 
-ABI surface: only ``createMarket``, ``seedInventory``, and ``resolve`` are encoded
-here (this seam is create/seed/resolve only — mint/redeem/the user ``buy`` path
-are out-of-scope user paths). The fragments match ``CalibreMarket.sol``; when the
-deployed ABI is finalized, only ``_ABI`` + the configured address change.
+ABI surface: ``createMarket``, ``seedInventory``, ``resolve``, and ``redeem`` are
+encoded here (this seam is the house's create/seed/resolve/reclaim cycle — the
+user ``buy``/``sell`` voucher paths stay out-of-scope). The fragments match
+``CalibreMarket.sol``; when the deployed ABI is finalized, only ``_ABI`` + the
+configured address change.
 """
 from __future__ import annotations
 
@@ -64,6 +72,13 @@ _ABI = [
             {"name": "chainMarketId", "type": "uint256"},
             {"name": "outcome", "type": "uint8"},
         ],
+        "outputs": [],
+    },
+    {
+        "type": "function",
+        "name": "redeem",
+        "stateMutability": "nonpayable",
+        "inputs": [{"name": "chainMarketId", "type": "uint256"}],
         "outputs": [],
     },
 ]
@@ -166,4 +181,18 @@ class OnchainClient:
             self._contract.functions.resolve(
                 int(chain_market_id), _outcome_to_enum(outcome)
             )
+        )
+
+    def redeem(self, chain_market_id: int) -> str:
+        """Call ``redeem(chainMarketId)``; return the tx hash.
+
+        Reclaims the resolver/counterparty's winning-side shares 1:1 for USDC on
+        an already-resolved market — the inverse of ``seed_inventory``, returning
+        the locked backing once a market settles. The contract reverts
+        ``NotResolved`` if called before ``resolve`` and ``NothingToRedeem`` if the
+        caller holds no winning shares (e.g. a second call), so the bridge treats
+        this as idempotent: a repeat after a successful redeem reverts and is
+        absorbed by the never-raise boundary."""
+        return self._send(
+            self._contract.functions.redeem(int(chain_market_id))
         )

@@ -74,11 +74,11 @@ def test_outcome_rejects_non_yes_no(bad):
         _outcome_to_enum(bad)
 
 
-# --- ABI shape (matches CalibreMarket.sol create/seed/resolve only) ---------
+# --- ABI shape (matches CalibreMarket.sol create/seed/resolve/redeem) -------
 
-def test_abi_exposes_only_create_market_seed_and_resolve():
+def test_abi_exposes_create_market_seed_resolve_and_redeem():
     names = {fn["name"] for fn in _ABI}
-    assert names == {"createMarket", "seedInventory", "resolve"}
+    assert names == {"createMarket", "seedInventory", "resolve", "redeem"}
 
 
 def test_create_market_abi_takes_a_single_uint256():
@@ -98,6 +98,13 @@ def test_seed_inventory_abi_takes_two_uint256():
 def test_resolve_abi_takes_uint256_chain_id_and_uint8_outcome():
     fn = next(f for f in _ABI if f["name"] == "resolve")
     assert [i["type"] for i in fn["inputs"]] == ["uint256", "uint8"]
+    assert fn["outputs"] == []
+    assert fn["stateMutability"] == "nonpayable"
+
+
+def test_redeem_abi_takes_a_single_uint256():
+    fn = next(f for f in _ABI if f["name"] == "redeem")
+    assert [i["type"] for i in fn["inputs"]] == ["uint256"]
     assert fn["outputs"] == []
     assert fn["stateMutability"] == "nonpayable"
 
@@ -294,6 +301,25 @@ def test_resolve_rejects_invalid_outcome_before_any_tx():
     assert rec.signed == []
 
 
+# --- redeem call-shape + tx assembly ----------------------------------------
+
+def test_redeem_encodes_redeem_with_int_id():
+    client, rec = _wire_client(nonce=5)
+    tx_hash = client.redeem(42)
+
+    assert rec.calls == [("redeem", (42,))]
+    built = rec.built[0]
+    assert built["nonce"] == 5
+    assert built["chainId"] == CHAIN_ID
+    assert tx_hash == b"\xab\xcd\xef".hex()
+
+
+def test_redeem_coerces_string_id_to_int():
+    client, rec = _wire_client()
+    client.redeem("99")  # type: ignore[arg-type]
+    assert rec.calls == [("redeem", (99,))]
+
+
 # --- the #468 boundary invariant --------------------------------------------
 
 def test_settlement_inputs_are_only_chain_id_outcome_and_set_count_boundary():
@@ -315,6 +341,9 @@ def test_settlement_inputs_are_only_chain_id_outcome_and_set_count_boundary():
 
     resolve_params = list(inspect.signature(OnchainClient.resolve).parameters)
     assert resolve_params == ["self", "chain_market_id", "outcome"]
+
+    redeem_params = list(inspect.signature(OnchainClient.redeem).parameters)
+    assert redeem_params == ["self", "chain_market_id"]
 
 
 def test_resolve_outcome_is_the_points_side_string_not_an_enum():
