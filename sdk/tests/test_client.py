@@ -109,6 +109,7 @@ class _Recorder:
         self.calls: list[tuple[str, tuple]] = []
         self.built: list[dict] = []
         self.signed: list[dict] = []
+        self.nonce_blocks: list = []
 
 
 class _FakeFn:
@@ -159,7 +160,10 @@ class _FakeEth:
         self._recorder = recorder
         self._nonce = nonce
 
-    def get_transaction_count(self, addr):
+    def get_transaction_count(self, addr, block=None):
+        # Record the block tag so the test can assert the PENDING nonce is used
+        # (so back-to-back sends in one pass don't collide on the same nonce).
+        self._recorder.nonce_blocks.append(block)
         return self._nonce
 
     def send_raw_transaction(self, raw):
@@ -247,6 +251,15 @@ def test_seed_inventory_coerces_string_args_to_int():
     client, rec = _wire_client()
     client.seed_inventory("7", "25")  # type: ignore[arg-type]
     assert rec.calls[0] == ("seedInventory", (7, 25))
+
+
+def test_send_reads_the_pending_nonce_so_back_to_back_sends_sequence():
+    # createMarket then seedInventory from the same account must not collide on
+    # the confirmed nonce — _send reads the "pending" tag.
+    client, rec = _wire_client()
+    client.create_market(1)
+    client.seed_inventory(1, 50)
+    assert rec.nonce_blocks == ["pending", "pending"]
 
 
 # --- resolve call-shape + outcome mapping -----------------------------------

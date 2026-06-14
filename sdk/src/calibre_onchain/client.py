@@ -122,7 +122,13 @@ class OnchainClient:
         return self._account.address
 
     def _send(self, fn) -> str:
-        nonce = self._w3.eth.get_transaction_count(self._account.address)
+        # Use the PENDING nonce, not the confirmed one, so back-to-back sends
+        # from the resolver within one pass (e.g. createMarket immediately
+        # followed by seedInventory) get sequential nonces n, n+1 and execute
+        # in order rather than colliding on the same nonce.
+        nonce = self._w3.eth.get_transaction_count(
+            self._account.address, "pending"
+        )
         tx = fn.build_transaction(
             {
                 "chainId": self._config.chain_id,
