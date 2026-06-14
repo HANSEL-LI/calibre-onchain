@@ -1,0 +1,38 @@
+name: node
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "discord-bot/**"
+      - "gateway/**"
+      - "parity/**"
+      - ".github/workflows/node.yml"
+  pull_request:
+    paths:
+      - "discord-bot/**"
+      - "gateway/**"
+      - "parity/**"
+      - ".github/workflows/node.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [discord-bot, gateway, parity]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: npm install
+        working-directory: ${{ matrix.package }}
+        run: npm install
+
+      - name: npm test
+        working-directory: ${{ matrix.package }}
+        run: npm test

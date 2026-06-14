@@ -105,9 +105,10 @@ parent-agnosticism). Cases (name, expected-accepted):
   resolver gets registered on a second parent), the wrapper's suffix restriction
   must be revisited. Documented inline.
 - **Third install/test step.** The loop's test commands cover both packages; the
-  parity step is run explicitly here and documented in `parity/README.md`. Not
-  wired into CI config because the repo has no CI workflow file today; the README
-  records the command so it joins whatever CI lands.
+  parity step is run explicitly here and documented in `parity/README.md`. Wired
+  into CI via a new `.github/workflows/node.yml` that runs `npm test` for
+  `discord-bot`, `gateway`, and `parity` on every PR (the pre-existing
+  `contracts.yml` covers only `contracts/`), so a drift fails red in CI.
 
 ## Test command
 

@@ -27,5 +27,7 @@ normalized) around the real `displayNameFor`. See the test header for why.
 cd parity && npm install && npm test
 ```
 
-The repo has no CI workflow file today; when one lands, add this command as a
-test step alongside the per-package `npm test` runs.
+CI runs this alongside the per-package suites: `.github/workflows/node.yml`
+runs `npm test` for `discord-bot`, `gateway`, and `parity` on every PR, so a
+drift between the two predicates fails red. (The pre-existing `contracts.yml`
+workflow covers only `contracts/`.)
