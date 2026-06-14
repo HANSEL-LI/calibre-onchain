@@ -55,6 +55,12 @@ export interface BotConfig {
   /** Name of the category archived match channels are moved to. */
   matchArchiveCategoryName: string;
   /**
+   * Max number of per-match channels to keep — only the next N upcoming matches
+   * (in calibre's "next-up" order, demos first) get a channel; the rest are
+   * archived (#580). Default 4.
+   */
+  matchChannelLimit: number;
+  /**
    * Shared secret for the verified identity push (#582). calibre HMAC-SHA256-
    * signs the raw webhook body with this; the ingest server verifies it
    * byte-for-byte. When empty the ingest server does not start (the bot still
@@ -96,6 +102,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     calibreApiBase: req(env, "CALIBRE_API_BASE", "https://app.hicalibre.gg").replace(/\/+$/, ""),
     matchCategoryName: req(env, "MATCH_CATEGORY_NAME", "upcoming-matches"),
     matchArchiveCategoryName: req(env, "MATCH_ARCHIVE_CATEGORY_NAME", "match-archive"),
+    matchChannelLimit: Number.parseInt(req(env, "MATCH_CHANNEL_LIMIT", "4"), 10),
     // Optional: empty secret => ingest server stays off (still no default, so
     // `req` can't be used here — the push is an opt-in surface).
     identityWebhookSecret: env.IDENTITY_WEBHOOK_SECRET ?? "",

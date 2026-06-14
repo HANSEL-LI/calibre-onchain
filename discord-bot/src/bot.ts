@@ -26,6 +26,7 @@ import {
   desiredChannels,
   fetchPublicMarkets,
   fetchUpcomingMatches,
+  isDemoMatch,
   isManagedMatchChannelName,
   pinnedMessageFor,
   reconcileChannels,
@@ -284,9 +285,10 @@ export function createBot(config: BotConfig, ranks: RankReader) {
         type: ChannelType.GuildText,
         parent: parentId,
         // Matchup + event + stage (e.g. "… · Masters London · Upper Semifinals"),
-        // clamped to Discord's 1024-char topic limit. Empties are dropped.
+        // demos tagged "[DEMO]", clamped to Discord's 1024-char topic limit.
+        // Empties are dropped.
         topic: [
-          `${desired.match.team1} vs ${desired.match.team2}`,
+          `${isDemoMatch(desired.match) ? "[DEMO] " : ""}${desired.match.team1} vs ${desired.match.team2}`,
           desired.match.event,
           desired.match.series,
         ]
@@ -342,7 +344,7 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     }
     const byName = new Map(managed.map((c) => [c.name, c]));
 
-    const desired = desiredChannels(matches, markets);
+    const desired = desiredChannels(matches, markets, config.matchChannelLimit);
     const plan = reconcileChannels(
       desired,
       managed.map((c) => c.name),

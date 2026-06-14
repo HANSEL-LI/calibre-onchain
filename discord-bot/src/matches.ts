@@ -67,17 +67,29 @@ export function matchTag(matchId: string): string {
 }
 
 /**
+ * Whether a match is a calibre demo-replay (synthetic, always-live). Demo match
+ * ids carry the `demo-replay` prefix (calibre's `DEMO_MATCH_ID_PREFIX`); these
+ * get a `demo-` channel-name prefix + a "[DEMO]" pin label so they're
+ * distinguishable from real fixtures. Pure.
+ */
+export function isDemoMatch(match: UpcomingMatch): boolean {
+  return match.match_id.startsWith("demo-replay");
+}
+
+/**
  * Deterministic, idempotent Discord channel name for a match:
- * `<teamA>-vs-<teamB>-<tag>`, lowercased and clamped to Discord's 100-char
- * limit. The trailing `matchTag` makes the name unique + reversible to the
- * match (the join key the bot owns). Pure — re-running finds the same name.
+ * `<teamA>-vs-<teamB>-<tag>` (demo matches get a leading `demo-`), lowercased
+ * and clamped to Discord's 100-char limit. The trailing `matchTag` makes the
+ * name unique + reversible to the match (the join key the bot owns). Pure —
+ * re-running finds the same name.
  */
 export function channelNameFor(match: UpcomingMatch): string {
   const a = slugifyTeam(match.team1) || "tbd";
   const b = slugifyTeam(match.team2) || "tbd";
   const tag = matchTag(match.match_id);
-  // Reserve room for "-vs-" + "-" + 6-char tag within the 100-char ceiling.
-  const base = `${a}-vs-${b}`.slice(0, 92);
+  const prefix = isDemoMatch(match) ? "demo-" : "";
+  // Reserve room for the prefix + "-vs-" + "-" + 6-char tag within the 100-char ceiling.
+  const base = `${prefix}${a}-vs-${b}`.slice(0, 92);
   return `${base}-${tag}`;
 }
 
@@ -134,7 +146,8 @@ export function pinnedMessageFor(
 ): string {
   const link = `${apiBase}/#matches/${encodeURIComponent(match.match_id)}`;
   const present = (s?: string): s is string => !!s && s.trim() !== "";
-  const lines = [`**${match.team1} vs ${match.team2}**`];
+  const label = isDemoMatch(match) ? "[DEMO] " : "";
+  const lines = [`**${label}${match.team1} vs ${match.team2}**`];
   const stage = [match.event, match.series].filter(present).join(" · ");
   if (stage) lines.push(stage);
   const when = [match.date_group, match.time].filter(present).join(" · ");
@@ -154,17 +167,22 @@ export interface DesiredChannel {
 /**
  * Build the desired channel set from the upcoming matches + open markets. Only
  * `upcoming`-status matches with both team names get a channel (a TBD/empty
- * matchup has no stable name). Pure.
+ * matchup has no stable name). Capped at `limit` (the next N matches in
+ * calibre's "next-up" order — demos first, then soonest real fixtures);
+ * `undefined` means no cap. Channels beyond the cap are archived by the
+ * reconcile (they're absent from the desired set). Pure.
  */
 export function desiredChannels(
   matches: readonly UpcomingMatch[],
   markets: readonly PublicMarket[],
+  limit?: number,
 ): DesiredChannel[] {
   const out: DesiredChannel[] = [];
   for (const match of matches) {
     if (match.status && match.status !== "upcoming") continue;
     if (!match.team1.trim() || !match.team2.trim()) continue;
     out.push({ match, name: channelNameFor(match), market: matchMarket(match, markets) });
+    if (limit !== undefined && out.length >= limit) break;
   }
   return out;
 }
