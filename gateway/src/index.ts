@@ -21,6 +21,26 @@ import { signResult } from "./signing.js";
 
 export function createApp(config: GatewayConfig) {
   const app = express();
+
+  // CCIP-read clients call this gateway from the BROWSER (e.g. app.ens.domains,
+  // wallets) via viem's offchain-lookup fetch, so a cross-origin POST needs CORS
+  // — without it the browser blocks the response and every record reads empty,
+  // even though server-side resolution works. A CCIP gateway is public, signed
+  // infrastructure (the resolver verifies the signer, not the origin), so `*` is
+  // correct here. Registered first so the OPTIONS preflight short-circuits before
+  // body parsing. (#633)
+  app.use((req: Request, res: Response, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Max-Age", "86400");
+    if (req.method === "OPTIONS") {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
+
   app.use(express.json({ limit: "32kb" }));
 
   const profiles = createProfileClient(config.apiBase);
