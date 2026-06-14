@@ -25,6 +25,7 @@ import {
 import {
   type ClanClient,
   type ProfileClient,
+  type PublicProfile,
   addrRecord,
   clanTextRecord,
   isClanRecordKey,
@@ -38,6 +39,13 @@ const RECORD_ABI = parseAbi([
   "function addr(bytes32 node, uint256 coinType) view returns (bytes)",
   "function text(bytes32 node, string key) view returns (string)",
 ]);
+// Multicallable batch read. Generic ENS UIs (the ENS manager app via
+// @ensdomains/ensjs) fetch a profile's whole record set in ONE request by
+// wrapping the individual addr()/text() calls in `multicall(bytes[])`; without
+// answering it the app's batched read reverts and every record but the
+// separately-fetched avatar shows blank (#633).
+const MULTICALL_ABI = parseAbi(["function multicall(bytes[] data) view returns (bytes[])"]);
+const MULTICALL_SELECTOR = "0xac9650d8"; // keccak256("multicall(bytes[])")[:4]
 
 const ETH_COIN_TYPE = 60n;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
@@ -133,9 +141,48 @@ export async function handleResolve(
   const [dnsName, innerData] = args as [Hex, Hex];
   const name = decodeDnsName(dnsName);
   const displayName = displayNameFor(name);
-
-  const inner = decodeFunctionData({ abi: RECORD_ABI, data: innerData });
   const profile = displayName ? await profiles.fetch(displayName) : null;
+
+  // A batched `multicall(bytes[])` — answer every sub-call against the single
+  // profile above (they all target the same name) and return abi-encoded
+  // `bytes[]`. This is the path the ENS app uses to read a whole profile (#633).
+  if (innerData.slice(0, 10).toLowerCase() === MULTICALL_SELECTOR) {
+    const { args: mcArgs } = decodeFunctionData({ abi: MULTICALL_ABI, data: innerData });
+    const calls = mcArgs[0] as readonly Hex[];
+    const results = await Promise.all(
+      calls.map((call) => answerRecord(call, name, profile, clans)),
+    );
+    return { result: encodeAbiParameters([{ type: "bytes[]" }], [results]) };
+  }
+
+  return { result: await answerRecord(innerData, name, profile, clans) };
+}
+
+/**
+ * Answer ONE inner record call (`addr` / `text`) against an already-fetched
+ * profile, returning the inner call's return type ABI-encoded directly — the
+ * same `bytes` a single `resolve()` yields, and one element of a `multicall`
+ * `bytes[]`. A record function we don't serve (e.g. `contenthash`) → empty
+ * bytes, so a batched read still succeeds for the records we DO serve and there
+ * is no enumeration oracle.
+ */
+/** Decode an inner record call, or null if it's a selector we don't serve. */
+function decodeRecordCall(data: Hex) {
+  try {
+    return decodeFunctionData({ abi: RECORD_ABI, data });
+  } catch {
+    return null;
+  }
+}
+
+async function answerRecord(
+  innerData: Hex,
+  name: string,
+  profile: PublicProfile | null,
+  clans: ClanClient,
+): Promise<Hex> {
+  const inner = decodeRecordCall(innerData);
+  if (!inner) return "0x"; // unsupported record selector (e.g. contenthash) → unset
 
   switch (inner.functionName) {
     case "addr": {
@@ -149,11 +196,11 @@ export async function handleResolve(
 
       if (!wantsCoinType) {
         const addr = valid ? getAddress(raw) : ZERO_ADDRESS;
-        return { result: encodeAbiParameters([{ type: "address" }], [addr]) };
+        return encodeAbiParameters([{ type: "address" }], [addr]);
       }
       // addr(node, coinType): non-ETH or unset → empty bytes.
       const bytesAddr: Hex = valid ? (getAddress(raw).toLowerCase() as Hex) : "0x";
-      return { result: encodeAbiParameters([{ type: "bytes" }], [bytesAddr]) };
+      return encodeAbiParameters([{ type: "bytes" }], [bytesAddr]);
     }
     case "text": {
       const key = inner.args[1] as string;
@@ -166,10 +213,10 @@ export async function handleResolve(
         const clan = clanLabel ? await clans.fetch(clanLabel) : null;
         value = clan ? clanTextRecord(clan, key) : "";
       }
-      return { result: encodeAbiParameters([{ type: "string" }], [value]) };
+      return encodeAbiParameters([{ type: "string" }], [value]);
     }
     default:
       // Unsupported record type → empty bytes (resolver returns nothing).
-      return { result: "0x" };
+      return "0x";
   }
 }

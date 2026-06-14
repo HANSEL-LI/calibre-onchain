@@ -225,6 +225,51 @@ test("addr() result decodes the way a real ENS client does (no extra wrap)", asy
   assert.equal(String(addr).toLowerCase(), DEMO.wallet_address!.toLowerCase());
 });
 
+// ── Batched multicall(bytes[]) — the path the ENS app uses to read a whole
+//    profile in one request (#633). Without it, every record but the separately-
+//    fetched avatar shows blank in app.ens.domains / wallets. ──
+
+test("multicall(bytes[]) answers each sub-call; unsupported records → empty, batch still succeeds", async () => {
+  const MULTICALL_ABI = parseAbi(["function multicall(bytes[] data) view returns (bytes[])"]);
+  const CONTENTHASH_ABI = parseAbi(["function contenthash(bytes32 node) view returns (bytes)"]);
+  const addrCall = encodeFunctionData({ abi: RECORD_ABI, functionName: "addr", args: [NODE] });
+  const descCall = encodeFunctionData({ abi: RECORD_ABI, functionName: "text", args: [NODE, "description"] });
+  const urlCall = encodeFunctionData({ abi: RECORD_ABI, functionName: "text", args: [NODE, "url"] });
+  // contenthash is a record the ENS app also batches but this gateway does not
+  // serve — it must resolve empty rather than revert the whole multicall.
+  const chCall = encodeFunctionData({ abi: CONTENTHASH_ABI, functionName: "contenthash", args: [NODE] });
+  const inner = encodeFunctionData({
+    abi: MULTICALL_ABI,
+    functionName: "multicall",
+    args: [[addrCall, descCall, urlCall, chCall]],
+  });
+  const { result } = await handleResolve(
+    resolveCall("demo.calibre.eth", inner),
+    stubClient({ demo: DEMO }),
+  );
+  const [results] = decodeAbiParameters([{ type: "bytes[]" }], result) as [Hex[]];
+  assert.equal(results.length, 4);
+  assert.equal(unwrapAddr(results[0]).toLowerCase(), DEMO.wallet_address!.toLowerCase());
+  assert.equal(unwrapText(results[1]), DEMO.description);
+  assert.equal(unwrapText(results[2]), DEMO.url);
+  assert.equal(results[3], "0x"); // unsupported contenthash → empty
+});
+
+test("multicall on an unknown subname resolves each record empty (no leak)", async () => {
+  const MULTICALL_ABI = parseAbi(["function multicall(bytes[] data) view returns (bytes[])"]);
+  const addrCall = encodeFunctionData({ abi: RECORD_ABI, functionName: "addr", args: [NODE] });
+  const descCall = encodeFunctionData({ abi: RECORD_ABI, functionName: "text", args: [NODE, "description"] });
+  const inner = encodeFunctionData({
+    abi: MULTICALL_ABI,
+    functionName: "multicall",
+    args: [[addrCall, descCall]],
+  });
+  const { result } = await handleResolve(resolveCall("ghost.calibre.eth", inner), stubClient({}));
+  const [results] = decodeAbiParameters([{ type: "bytes[]" }], result) as [Hex[]];
+  assert.equal(unwrapAddr(results[0]), "0x0000000000000000000000000000000000000000");
+  assert.equal(unwrapText(results[1]), "");
+});
+
 // ── Clan-aggregate records on a bare <clan>.hicalibre.eth (#583) ──
 
 test("bareClanLabelFor: only a 3-label name is a clan candidate", () => {
