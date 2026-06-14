@@ -112,6 +112,16 @@ test("rankReader returns null for an unset record", async () => {
   assert.equal(await reader.rankOf("nobody.calibre.eth"), null);
 });
 
+test("clanOf reads the gg.calibre.clan label (trimmed); null when unset", async () => {
+  const reader = createRankReader(
+    "http://unused",
+    PARENT,
+    stubClient({ "alice.calibre.eth|gg.calibre.clan": "  Sharks  " }),
+  );
+  assert.equal(await reader.clanOf("alice.calibre.eth"), "Sharks");
+  assert.equal(await reader.clanOf("nobody.calibre.eth"), null);
+});
+
 test("cardOf reads rank+roi+brier for the ephemeral self-view", async () => {
   const reader = createRankReader(
     "http://unused",
