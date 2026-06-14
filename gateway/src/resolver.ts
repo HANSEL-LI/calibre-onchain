@@ -22,7 +22,14 @@ import {
   isAddress,
   parseAbi,
 } from "viem";
-import { type ProfileClient, addrRecord, textRecord } from "./profile.js";
+import {
+  type ClanClient,
+  type ProfileClient,
+  addrRecord,
+  clanTextRecord,
+  isClanRecordKey,
+  textRecord,
+} from "./profile.js";
 
 // ENSIP-10 extended resolver entrypoint + the record functions we serve.
 const RESOLVE_ABI = parseAbi(["function resolve(bytes name, bytes data) view returns (bytes)"]);
@@ -57,18 +64,33 @@ export function decodeDnsName(encoded: Hex): string {
  *
  * Clan nesting (`<user>.<clan>.calibre.eth`) is an addressing convenience: the
  * `<clan>` label is namespacing, not a second DB lookup, so a nested name
- * resolves the *user* leaf exactly as the flat form does. A bare clan name
- * (`sharks.calibre.eth`) is structurally identical to a flat user subname, so it
- * is looked up as a user — there is no clan-aggregate profile endpoint in Seam 2
- * this weekend, so a non-profile clan label simply yields the empty record (no
- * enumeration oracle, same as any unknown name). The clan-membership cross-check
- * is a W6.4 concern once a clan endpoint exists.
+ * resolves the *user* leaf exactly as the flat form does. A bare 3-label name
+ * (`sharks.calibre.eth`) is **ambiguous** — it is the user-lookup candidate here
+ * AND a possible clan (see `bareClanLabelFor`); `handleResolve` tries the user
+ * first so a real user always resolves as a user (#583).
  *
  * Returns null for the bare parent (`calibre.eth`) — nothing to resolve.
  */
 export function displayNameFor(name: string): string | null {
   const labels = name.split(".").filter((l) => l.length > 0);
   if (labels.length <= 2) return null; // bare "calibre.eth" or shorter
+  return labels[0];
+}
+
+/**
+ * The clan label a name resolves to as a **clan-aggregate** profile, or null.
+ *
+ * Only a bare single-label clan name — exactly `<clan>.<parent>.<tld>` (3 labels,
+ * e.g. `sharks.hicalibre.eth`) — is a clan candidate. A nested
+ * `<user>.<clan>.calibre.eth` (≥4 labels) is always a user leaf (the `<clan>` is
+ * namespacing, not a lookup), and the bare parent (≤2 labels) is nothing. The
+ * clan candidate is the SAME leftmost label `displayNameFor` returns for a
+ * 3-label name, so the two coincide exactly where disambiguation is needed;
+ * `handleResolve` resolves the tie user-first (#583, F4).
+ */
+export function bareClanLabelFor(name: string): string | null {
+  const labels = name.split(".").filter((l) => l.length > 0);
+  if (labels.length !== 3) return null;
   return labels[0];
 }
 
@@ -83,12 +105,27 @@ export interface ResolveResult {
   result: Hex;
 }
 
+/** A `ClanClient` whose every fetch returns null — the default when no clan
+ * lookup is wired (keeps clan resolution opt-in and existing call-sites valid). */
+const NO_CLAN_CLIENT: ClanClient = { async fetch() { return null; } };
+
 /**
  * Answer a CCIP-read `resolve(name, data)` request against the profile API.
  * Unknown subnames / unset records resolve to the empty value (0-address / "")
  * — indistinguishable from "never set", so there is no enumeration oracle.
+ *
+ * Disambiguation for a bare `<clan>.hicalibre.eth` (#583): the leftmost label is
+ * tried as a **user** first, so a real user name always resolves as a user. Only
+ * when no such user exists do we serve clan-aggregate text records
+ * (`gg.calibre.clan.*`) from the clan endpoint. Nested `<user>.<clan>...` names
+ * are never clans. `addr()` is a user-only record, so a clan-only name resolves
+ * `addr()` to the zero address.
  */
-export async function handleResolve(callData: Hex, profiles: ProfileClient): Promise<ResolveResult> {
+export async function handleResolve(
+  callData: Hex,
+  profiles: ProfileClient,
+  clans: ClanClient = NO_CLAN_CLIENT,
+): Promise<ResolveResult> {
   const { functionName, args } = decodeFunctionData({ abi: RESOLVE_ABI, data: callData });
   if (functionName !== "resolve") {
     throw new Error(`unexpected outer call ${functionName}`);
@@ -120,7 +157,15 @@ export async function handleResolve(callData: Hex, profiles: ProfileClient): Pro
     }
     case "text": {
       const key = inner.args[1] as string;
-      const value = profile ? textRecord(profile, key) : "";
+      let value = profile ? textRecord(profile, key) : "";
+      // Clan fallback: a bare clan name with no matching user, queried for a
+      // clan-aggregate key, resolves the clan profile. User-first (profile !==
+      // null short-circuits this) keeps a real user resolving as a user (#583).
+      if (!profile && isClanRecordKey(key)) {
+        const clanLabel = bareClanLabelFor(name);
+        const clan = clanLabel ? await clans.fetch(clanLabel) : null;
+        value = clan ? clanTextRecord(clan, key) : "";
+      }
       return { result: encodeAbiParameters([{ type: "string" }], [value]) };
     }
     default:
