@@ -2,10 +2,14 @@
  * Bot configuration — all values from the environment (public env contract in
  * the repo-root `.env.example`; this service ships no secrets).
  *
- * The bot reads ENS only. The ENS-related vars below point at an RPC that can
- * resolve `*.calibre.eth` (i.e. a chain where the calibre offchain resolver is
- * registered, served by the W6.2 gateway via CCIP-read). There is deliberately
- * NO calibre-API base here — the bot never calls calibre.
+ * The bot reads ENS for ranks. The ENS-related vars below point at an RPC that
+ * can resolve `*.calibre.eth` (i.e. a chain where the calibre offchain resolver
+ * is registered, served by the W6.2 gateway via CCIP-read).
+ *
+ * As of #580 it also reads calibre's **public** match/market data over HTTP
+ * (`calibreApiBase`) to auto-create a channel per upcoming match. That read is
+ * public, no-auth — the bot holds no calibre session and never touches a private
+ * surface. Ranks still come from ENS only; calibre is the *match-data* source.
  */
 
 export interface BotConfig {
@@ -32,6 +36,17 @@ export interface BotConfig {
   announceChannelName: string;
   /** Name of the rank-gated lounge channel the bot ensures (Seer/Oracle only). */
   loungeChannelName: string;
+  /**
+   * calibre **public** API base (e.g. `https://app.hicalibre.gg`). The bot reads
+   * `GET /api/v1/matches/upcoming` + `GET /api/v1/markets/public/markets` from
+   * here (#580) to auto-create a channel per upcoming match. Public, no-auth —
+   * the bot holds no session. Trailing slash is stripped so callers append paths.
+   */
+  calibreApiBase: string;
+  /** Name of the Discord category the per-match channels live under. */
+  matchCategoryName: string;
+  /** Name of the category archived match channels are moved to. */
+  matchArchiveCategoryName: string;
 }
 
 function req(env: NodeJS.ProcessEnv, name: string, fallback?: string): string {
@@ -54,5 +69,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
       env.ANNOUNCE_CHANNEL_ID && env.ANNOUNCE_CHANNEL_ID !== "" ? env.ANNOUNCE_CHANNEL_ID : undefined,
     announceChannelName: req(env, "ANNOUNCE_CHANNEL_NAME", "rank-ups"),
     loungeChannelName: req(env, "LOUNGE_CHANNEL_NAME", "oracles-lounge"),
+    calibreApiBase: req(env, "CALIBRE_API_BASE", "https://app.hicalibre.gg").replace(/\/+$/, ""),
+    matchCategoryName: req(env, "MATCH_CATEGORY_NAME", "upcoming-matches"),
+    matchArchiveCategoryName: req(env, "MATCH_ARCHIVE_CATEGORY_NAME", "match-archive"),
   };
 }
