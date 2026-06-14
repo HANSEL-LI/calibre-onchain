@@ -19,7 +19,13 @@ import {
 import type { BotConfig } from "./config.js";
 import { isAcceptedName } from "./rank.js";
 import type { RankReader } from "./rank.js";
-import { MANAGED_ROLE_NAMES, reconcileRoles } from "./roles.js";
+import {
+  LADDER_TIERS,
+  TIER_STYLE,
+  legacyRoleNameForTier,
+  reconcileRoles,
+  roleNameForTier,
+} from "./roles.js";
 
 export const LINK_COMMAND = new SlashCommandBuilder()
   .setName("link")
@@ -38,10 +44,37 @@ export type LinkRegistry = Map<string, string>;
 async function ensureManagedRoles(guild: Guild): Promise<Map<string, string>> {
   const byName = new Map<string, string>();
   await guild.roles.fetch();
-  for (const name of MANAGED_ROLE_NAMES) {
-    let role = guild.roles.cache.find((r) => r.name === name);
+  for (const tier of LADDER_TIERS) {
+    const name = roleNameForTier(tier);
+    const legacy = legacyRoleNameForTier(tier);
+    const style = TIER_STYLE[tier];
+    // Match the bare name or the pre-rename `calibre:<Tier>` so an existing role
+    // is restyled/renamed in place — never orphaned into a bare-named duplicate.
+    let role = guild.roles.cache.find((r) => r.name === name || r.name === legacy);
     if (!role) {
-      role = await guild.roles.create({ name, reason: "calibre rank role (W6.4)" });
+      role = await guild.roles.create({
+        name,
+        color: style.color,
+        hoist: style.hoist,
+        reason: "calibre rank role",
+      });
+    } else if (role.name !== name || role.color !== style.color || role.hoist !== style.hoist) {
+      role = await role.edit({
+        name,
+        color: style.color,
+        hoist: style.hoist,
+        reason: "calibre rank role restyle",
+      });
+    }
+    // Unicode role icon is best-effort: it requires guild Boost level 2
+    // (ROLE_ICONS feature). On guilds without it setUnicodeEmoji rejects, so
+    // swallow the error — colour + hoist + name still land.
+    if (style.emoji && role.unicodeEmoji !== style.emoji) {
+      try {
+        await role.setUnicodeEmoji(style.emoji, "calibre rank role icon");
+      } catch {
+        // not boosted enough for role icons.
+      }
     }
     byName.set(name, role.id);
   }
@@ -130,6 +163,20 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     client.on("interactionCreate", async (interaction) => {
       if (interaction.isChatInputCommand() && interaction.commandName === "link") {
         await handleLink(interaction);
+      }
+    });
+
+    // Apply role styling (names, colours, hoist, icons) as soon as we're online,
+    // so a deploy converges the guild without waiting for the first /link. If the
+    // bot's role sits below the tier roles, the edits 403 — log a clear hint.
+    client.once("ready", async () => {
+      try {
+        roleIds = await ensureManagedRoles(await guild());
+      } catch (err) {
+        console.error(
+          "ensureManagedRoles failed on ready — is the bot's own role positioned ABOVE the tier roles?",
+          err,
+        );
       }
     });
 
