@@ -14,6 +14,7 @@ import {
   pinnedMessageFor,
   reconcileChannels,
   slugifyTeam,
+  stableMatchKey,
 } from "../src/matches.js";
 
 const API = "https://app.hicalibre.gg";
@@ -49,6 +50,23 @@ test("same matchup, different match ids → distinct channel names", () => {
   const a = channelNameFor(mk("1", "NRG", "Sentinels"));
   const b = channelNameFor(mk("2", "NRG", "Sentinels"));
   assert.notEqual(a, b, "match-id tag disambiguates rematches");
+});
+
+test("stableMatchKey strips a demo cycle suffix, leaves real ids", () => {
+  assert.equal(stableMatchKey("demo-replay-edg-fut-c1"), "demo-replay-edg-fut");
+  assert.equal(stableMatchKey("demo-replay-edg-fut-c42"), "demo-replay-edg-fut");
+  assert.equal(stableMatchKey("670473"), "670473");
+  assert.equal(stableMatchKey("demo-replay-edg-fut"), "demo-replay-edg-fut");
+});
+
+test("a demo slot keeps ONE channel across cycles (no churn)", () => {
+  const c1 = channelNameFor(mk("demo-replay-edg-fut-c1", "EDward Gaming", "FUT Esports"));
+  const c9 = channelNameFor(mk("demo-replay-edg-fut-c9", "EDward Gaming", "FUT Esports"));
+  assert.equal(c1, c9, "cycle suffix must not change the channel name");
+  assert.ok(c1.startsWith("demo-edward-gaming-vs-fut-esports-"));
+  // Different demo slots still get different channels.
+  const other = channelNameFor(mk("demo-replay-g2-xlg-c1", "XLG Gaming", "G2 Esports"));
+  assert.notEqual(c1, other);
 });
 
 test("channel name is clamped to Discord's 100-char limit", () => {

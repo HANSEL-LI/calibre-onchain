@@ -77,16 +77,28 @@ export function isDemoMatch(match: UpcomingMatch): boolean {
 }
 
 /**
+ * The cycle-stable key a channel name is tagged from. A demo replay's id carries
+ * a per-cycle suffix (`demo-replay-<slug>-c<N>`); each loop opens a new cycle id,
+ * which would otherwise tag a *new* channel every loop and churn the old one into
+ * the archive. Strip the `-c<N>` so all cycles of a slot map to ONE stable
+ * channel (the pin still deep-links the current cycle's match id). Real matches
+ * are returned unchanged. Pure.
+ */
+export function stableMatchKey(matchId: string): string {
+  return matchId.replace(/^(demo-replay-.+)-c\d+$/, "$1");
+}
+
+/**
  * Deterministic, idempotent Discord channel name for a match:
  * `<teamA>-vs-<teamB>-<tag>` (demo matches get a leading `demo-`), lowercased
- * and clamped to Discord's 100-char limit. The trailing `matchTag` makes the
- * name unique + reversible to the match (the join key the bot owns). Pure —
- * re-running finds the same name.
+ * and clamped to Discord's 100-char limit. The trailing `matchTag` is derived
+ * from the cycle-stable key, so a demo slot keeps one channel across cycles and
+ * a real match's name is reversible to it. Pure — re-running finds the same name.
  */
 export function channelNameFor(match: UpcomingMatch): string {
   const a = slugifyTeam(match.team1) || "tbd";
   const b = slugifyTeam(match.team2) || "tbd";
-  const tag = matchTag(match.match_id);
+  const tag = matchTag(stableMatchKey(match.match_id));
   const prefix = isDemoMatch(match) ? "demo-" : "";
   // Reserve room for the prefix + "-vs-" + "-" + 6-char tag within the 100-char ceiling.
   const base = `${prefix}${a}-vs-${b}`.slice(0, 92);
