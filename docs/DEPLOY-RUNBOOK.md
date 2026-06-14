@@ -105,7 +105,7 @@ each call, or drive them from the private app's resolver path.
 
 ## 4. Deploy the ENS offchain resolver + run the gateway
 
-The gateway serves CCIP-read answers for `<name>.calibre.eth` from calibre's
+The gateway serves CCIP-read answers for `<name>.hicalibre.eth` from calibre's
 public profile API; the on-chain resolver follows `OffchainLookup` to it.
 
 1. Deploy an offchain resolver that mirrors `ensdomains/offchain-resolver`
@@ -113,9 +113,10 @@ public profile API; the on-chain resolver follows `OffchainLookup` to it.
    Allowlist the **address of `GATEWAY_SIGNER_KEY`** as a valid signer, and set its
    `url` to the public gateway URL. Record its address →**`GATEWAY_RESOLVER_ADDRESS`**.
 2. Point a name at it: set the offchain resolver as the resolver for
-   `calibre.eth` (or the testnet equivalent the ENS booth designates) →
-   **`ENS_PARENT`**. Pick an RPC that can resolve it (e.g. Sepolia via Tenderly) →
-   **`ENS_RPC_URL`**.
+   `hicalibre.eth` (the canonical parent — `calibre.eth` cannot carry the
+   offchain resolver; see ENS briefing §12) → **`ENS_PARENT`**. The resolver is
+   registered on Ethereum **mainnet**, so **`ENS_RPC_URL`** must be a mainnet
+   RPC (the bot resolves over mainnet's UniversalResolver).
 3. Run the gateway:
    ```bash
    cd gateway && npm install && npm run build
@@ -126,7 +127,7 @@ public profile API; the on-chain resolver follows `OffchainLookup` to it.
    npm start
    ```
    Smoke-test: `GET /health` → `{ ok, resolver, apiBase }`. Then resolve a known
-   opted-in `display_name`: `<name>.calibre.eth` should return that user's
+   opted-in `display_name`: `<name>.hicalibre.eth` should return that user's
    `addr()` + `gg.calibre.rank` / `com.discord` text records.
 
 "Updating a text record" = updating calibre's DB (free + instant); the gateway
@@ -160,10 +161,26 @@ These set the calibre-side `DYNAMIC_ENABLED` leg (step 8). Optionally
   - The bot **auto-creates** the per-tier managed roles in the guild on start, so
     the demo guild needs no manual role setup. Invite the bot with
     `Manage Roles` + the managed role below the bot's own role.
-  - Reuses **`ENS_RPC_URL`** / **`ENS_PARENT`** from step 4; `RESYNC_INTERVAL_MS`
-    defaults to 5 min.
+  - Reuses **`ENS_RPC_URL`** (mainnet) / **`ENS_PARENT`** (`hicalibre.eth`) from
+    step 4; `RESYNC_INTERVAL_MS` defaults to 5 min.
+  - Optional legs: **`IDENTITY_WEBHOOK_SECRET`** + **`IDENTITY_PORT`** turn on the
+    verified-identity ingest (#582, must match calibre's
+    `BOT_IDENTITY_WEBHOOK_SECRET`); **`MARKETS_SERVICE_TOKEN`** turns on side-role
+    sync (#581, must match calibre's `MARKETS_SERVICE_TOKEN`). Left empty, those
+    features stay off and the bot still runs rank roles + match channels.
+
+  Build once, then run it as a managed systemd service (mirrors
+  `calibre-ens-gateway` — survives logout/reboot, restarts on crash) rather than
+  a bare `npm start` in a shell:
   ```bash
-  cd discord-bot && npm install && npm run build && npm start
+  cd discord-bot && npm install && npm run build
+  # env file holds the secrets above (root-owned, 0600):
+  sudo install -m600 .env /etc/calibre-discord-bot.env
+  sudo install -m644 deploy/calibre-discord-bot.service /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now calibre-discord-bot
+  sudo systemctl status calibre-discord-bot   # expect active (running)
+  journalctl -u calibre-discord-bot -f        # watch the first reconcile
   ```
 
 ---
@@ -221,8 +238,8 @@ passed step 7.
 | `GATEWAY_RESOLVER_ADDRESS` | 4 | deployed offchain resolver |
 | `GATEWAY_SIGNER_KEY` | 4 | CCIP-read response signer; address allowlisted on the resolver |
 | `CALIBRE_PUBLIC_API_BASE` | 4 | e.g. `https://app.hicalibre.gg/api/v1` |
-| `ENS_PARENT` | 4 | e.g. `calibre.eth` (booth-designated) |
-| `ENS_RPC_URL` | 4 | RPC that resolves `*.calibre.eth` |
+| `ENS_PARENT` | 4 | `hicalibre.eth` (canonical parent) |
+| `ENS_RPC_URL` | 4 | Ethereum **mainnet** RPC (resolves `*.hicalibre.eth`) |
 | `DYNAMIC_ENVIRONMENT_ID` | 5 | public; reaches SPA via `/config` |
 | `DYNAMIC_API_KEY` | 5 | secret; server-side only |
 | `DYNAMIC_JWT_AUDIENCE` | 5 | must match Dynamic's issued `aud` |
@@ -249,7 +266,7 @@ deltas at each money step** (read balances on `https://testnet.arcscan.app` or v
 - [ ] **Resolve** — `resolve(chainMarketId, YES|NO)` from the resolver once the
       match settles; `Resolved` event emitted.
 - [ ] **ENS record** — the winner's `gg.calibre.rank` (tier) text record reflects
-      the updated standing: resolve `<name>.calibre.eth` and read it back.
+      the updated standing: resolve `<name>.hicalibre.eth` and read it back.
 - [ ] **Discord role** — within `RESYNC_INTERVAL_MS` (or via `/link`), the member's
       rank role flips in the guild to match the ENS tier.
 - [ ] **Redeem** — `redeem(chainMarketId)` pays winning shares 1:1; **winner USDC ↑

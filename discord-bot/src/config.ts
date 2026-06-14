@@ -86,8 +86,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     discordToken: req(env, "DISCORD_BOT_TOKEN"),
     discordAppId: req(env, "DISCORD_APP_ID"),
     guildId: req(env, "DISCORD_GUILD_ID"),
-    ensRpcUrl: req(env, "ENS_RPC_URL", "https://sepolia.gateway.tenderly.co"),
-    ensParent: req(env, "ENS_PARENT", "calibre.eth").replace(/^\.+|\.+$/g, ""),
+    // The resolver for hicalibre.eth lives on Ethereum mainnet (rank.ts pins
+    // chain: mainnet), so the RPC default must be a mainnet endpoint — a testnet
+    // RPC resolves nothing. ENS_PARENT defaults to hicalibre.eth; calibre.eth
+    // cannot carry the offchain resolver (ENS briefing §12).
+    ensRpcUrl: req(env, "ENS_RPC_URL", "https://cloudflare-eth.com"),
+    ensParent: req(env, "ENS_PARENT", "hicalibre.eth").replace(/^\.+|\.+$/g, ""),
     resyncIntervalMs: Number.parseInt(req(env, "RESYNC_INTERVAL_MS", "300000"), 10),
     announceChannelId:
       env.ANNOUNCE_CHANNEL_ID && env.ANNOUNCE_CHANNEL_ID !== "" ? env.ANNOUNCE_CHANNEL_ID : undefined,
