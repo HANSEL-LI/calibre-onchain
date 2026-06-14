@@ -178,6 +178,19 @@ class _FakeSigner:
         return b"\x00"
 
 
+class _FakeBroadcastingSigner:
+    """A broadcasting signer (the Dynamic seam): records the tx it is handed."""
+
+    address = "0x000000000000000000000000000000000000BEEF"
+
+    def __init__(self):
+        self.tx = None
+
+    def send_transaction(self, tx):
+        self.tx = tx
+        return "0xBROADCASTHASH"
+
+
 class _FakeFn:
     def __init__(self, recorder, name):
         self._recorder = recorder
@@ -209,6 +222,8 @@ class _FakeContract:
 
 
 class _FakeEth:
+    gas_price = 11
+
     def get_transaction_count(self, addr):
         return 7
 
@@ -274,3 +289,35 @@ def test_buy_without_source_raises():
     client._voucher_source = None
     with pytest.raises(RuntimeError):
         client.buy(42, side=OUTCOME_YES, size=1, price_yes_micro=5000)
+
+
+def test_broadcasting_signer_gets_a_legacy_shaped_tx():
+    """For the Dynamic (broadcasting) path, _send builds a legacy tx: gasPrice is
+    pinned from the node and no EIP-1559 fee fields are set, so the SDK accepts
+    it. The raw-bytes (eth-account) path is unchanged (no gasPrice forced)."""
+    client, rec, src = _wire_client()
+    bsig = _FakeBroadcastingSigner()
+    client._signer = bsig
+    tx_hash = client.buy(42, side=OUTCOME_YES, size=1, price_yes_micro=5000)
+    assert tx_hash == "0xBROADCASTHASH"
+    assert bsig.tx["gasPrice"] == _FakeEth.gas_price
+    assert "maxFeePerGas" not in bsig.tx
+    assert "maxPriorityFeePerGas" not in bsig.tx
+
+
+def test_raw_signer_path_does_not_force_gas_price():
+    """The eth-account raw-bytes path is left exactly as before — no gasPrice is
+    injected by _send (web3 picks the fee strategy for the local signer)."""
+    client, rec, src = _wire_client()  # _FakeSigner is a raw signer
+    captured = {}
+
+    class _Capture:
+        address = _FakeSigner.address
+
+        def sign_transaction(self, tx):
+            captured.update(tx)
+            return b"\x00"
+
+    client._signer = _Capture()
+    client.buy(42, side=OUTCOME_YES, size=1, price_yes_micro=5000)
+    assert "gasPrice" not in captured

@@ -18,7 +18,15 @@ from .contract import MarketClient, MarketView
 from .loop import run, step
 from .maker import Action, ActionKind, decide
 from .price import MarketNotOpen, PriceFeed, PriceUnavailable, Quote
-from .signer import DynamicServerWallet, LocalKeySigner, Signer, build_signer
+from .signer import (
+    BroadcastingSigner,
+    DynamicServerWallet,
+    LocalKeySigner,
+    RawSigner,
+    SecretRef,
+    Signer,
+    build_signer,
+)
 from .voucher import (
     CalibreVoucherClient,
     LocalVoucherSigner,
@@ -43,6 +51,9 @@ __all__ = [
     "run",
     "step",
     "Signer",
+    "RawSigner",
+    "BroadcastingSigner",
+    "SecretRef",
     "LocalKeySigner",
     "DynamicServerWallet",
     "build_signer",

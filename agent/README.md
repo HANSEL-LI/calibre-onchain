@@ -73,21 +73,54 @@ testnet USDC as `inventory_cap_sets * usdcUnit` requires, so a bug can never
 exceed it. (The signed voucher's per-market notional cap is calibre's contract-side
 belt-and-suspenders on top of this.)
 
-## Signer: Dynamic server wallet (with a local-key fallback)
+## Signer: Dynamic MPC server wallet (with a local-key fallback)
 
-The agent signs from a **Dynamic server wallet** — the Dynamic agentic-bounty
-path. When `DYNAMIC_API_KEY` + `DYNAMIC_ENVIRONMENT_ID` are set, it
-provisions/loads a server wallet and signs transactions through Dynamic's wallet
-API (`calibre_agent.signer.DynamicServerWallet`).
+The agent signs from a **Dynamic MPC server wallet** — the Dynamic agentic-bounty
+path (#618). When `DYNAMIC_API_KEY` + `DYNAMIC_ENVIRONMENT_ID` are set, it drives
+Dynamic's documented Python SDK, [`dynamic-wallet-sdk`](https://www.dynamic.xyz/docs/python/quickstart)
+(`calibre_agent.signer.DynamicServerWallet`):
+
+```
+DynamicEvmWalletClient(env_id)
+  .authenticate_api_token(token)
+  .create_wallet_account(threshold_signature_scheme=…, password=…) → WalletProperties
+  .send_transaction(address=…, tx=…, password=…, rpc_url=…) → tx_hash
+```
+
+It's **TSS-MPC**: the single private key never exists — your server and Dynamic
+each hold a key share. At startup the agent provisions a fresh MPC wallet (or
+adopts an existing one via `DYNAMIC_WALLET_ID` + `DYNAMIC_ACCOUNT_ADDRESS`) and
+persists only the **non-sensitive** `wallet_id` + `account_address`. The SDK's
+`send_transaction` **signs and broadcasts** in one MPC round-trip (legacy
+`gasPrice` transactions only — no EIP-1559 fields), so the contract client calls
+it directly rather than broadcasting raw bytes itself.
+
+Install the SDK with the optional extra (it's lazily imported, so the testnet
+artifact installs without it): `pip install 'calibre-agent[server-wallet]'`.
+
+**Sensitive material handling (#618 invariant).** The API token and the wallet
+`DYNAMIC_WALLET_PASSWORD` (which unlocks the Dynamic-held key shares) are wrapped
+in a `SecretRef` — resolved lazily, redacted from every `repr`/log, and never
+placed on the config dataclass or a plaintext DB column. In production point the
+`SecretRef` resolver at a KMS / Secret Manager (AWS KMS, GCP Secret Manager,
+Azure Key Vault — per Dynamic's storage best-practices) instead of a bare env var.
+
+> **Backup decision.** We rely on Dynamic's **password-encrypted backup** of the
+> MPC shares (the `password` passed to `create_wallet_account`) rather than
+> self-custodying raw shares. The consequence: **lose `DYNAMIC_WALLET_PASSWORD`
+> and you lose the wallet** — store it durably in your vault. (Self-custody of raw
+> shares is a Node-SDK-only path the Python SDK does not expose.)
 
 For running against Arc testnet without a Dynamic account, set `AGENT_PRIVATE_KEY`
-instead and the agent signs with a local `eth-account` key
-(`LocalKeySigner`) — the same primitive the repo's `sdk` uses. Both produce raw
-signed bytes, so swapping signers never touches the strategy or loop.
+instead and the agent signs with a local `eth-account` key (`LocalKeySigner`,
+returning raw bytes the client broadcasts) — the same primitive the repo's `sdk`
+uses. Swapping signers never touches the strategy or loop.
 
 > A real Dynamic environment and a funded Arc testnet server wallet are
 > owner/booth-gated. This repo ships only `.env.example` placeholders; supply
-> real values in your own environment.
+> real values (and the KMS binding) in your own environment. The live-testnet-buy
+> success check is owner/booth work; the SDK contract is covered by faithful-fake
+> unit tests in `tests/test_signer.py`.
 
 ## Voucher source: calibre signer (with a local-key fallback)
 
@@ -119,7 +152,8 @@ export ARC_CHAIN_ID=5042002
 export CALIBRE_MARKET_ADDRESS=0x...        # deployed CalibreMarket
 export ARC_USDC_ADDRESS=0x...              # 6-decimal ERC-20 USDC on Arc
 # pick a tx signer:
-export DYNAMIC_API_KEY=...  DYNAMIC_ENVIRONMENT_ID=...   # server wallet (bounty)
+export DYNAMIC_API_KEY=...  DYNAMIC_ENVIRONMENT_ID=...   # MPC server wallet (bounty)
+export DYNAMIC_WALLET_PASSWORD=...                       # unlocks the MPC key shares
 # or, for a testnet dry run without Dynamic:
 export AGENT_PRIVATE_KEY=0x...
 # pick a voucher source (W1.2 buy leg):

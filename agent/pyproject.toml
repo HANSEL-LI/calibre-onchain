@@ -18,6 +18,9 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
+# The Dynamic MPC server-wallet path (#618). Optional so the testnet/local-key
+# artifact installs and tests run without it (the SDK is lazily imported).
+server-wallet = ["dynamic-wallet-sdk>=0.6"]
 
 [project.scripts]
 calibre-agent = "calibre_agent.__main__:main"
