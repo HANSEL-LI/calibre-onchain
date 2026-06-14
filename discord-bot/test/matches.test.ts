@@ -6,6 +6,7 @@ import {
   channelNameFor,
   desiredChannels,
   isChannelForMatch,
+  isDemoMatch,
   isManagedMatchChannelName,
   matchMarket,
   matchTag,
@@ -161,4 +162,46 @@ test("reconcileChannels is idempotent when fully converged", () => {
   assert.deepEqual(plan.create, []);
   assert.deepEqual(plan.archive, []);
   assert.deepEqual(plan.keep.map((d) => d.name), [name]);
+});
+
+test("isDemoMatch detects the demo-replay prefix", () => {
+  assert.equal(isDemoMatch(mk("demo-replay-edg-fut-c1", "EDward Gaming", "FUT Esports")), true);
+  assert.equal(isDemoMatch(mk("670473", "LEVIATÁN", "Team Heretics")), false);
+});
+
+test("demo matches get a demo- channel-name prefix (still managed + reversible)", () => {
+  const m = mk("demo-replay-edg-fut-c1", "EDward Gaming", "FUT Esports");
+  const name = channelNameFor(m);
+  assert.match(name, /^demo-edward-gaming-vs-fut-esports-[0-9a-f]{6}$/);
+  assert.ok(isManagedMatchChannelName(name), "demo channel is still bot-managed");
+  assert.ok(isChannelForMatch(name, m), "name still round-trips to its match");
+});
+
+test("pinnedMessageFor tags demo matches with [DEMO] (real ones untagged)", () => {
+  const demo = pinnedMessageFor(mk("demo-replay-edg-fut-c1", "EDward Gaming", "FUT Esports"), null, API);
+  assert.match(demo, /\[DEMO\] EDward Gaming vs FUT Esports/);
+  const real = pinnedMessageFor(mk("1", "NRG", "Sentinels"), MARKETS[0], API);
+  assert.doesNotMatch(real, /\[DEMO\]/);
+});
+
+test("desiredChannels caps to the next N matches, in order", () => {
+  const matches: UpcomingMatch[] = [
+    mk("demo-replay-a-c1", "Alpha", "Bravo"),
+    mk("demo-replay-c-c1", "Charlie", "Delta"),
+    mk("10", "Echo", "Foxtrot"),
+    mk("11", "Golf", "Hotel"),
+    mk("12", "India", "Juliet"),
+  ];
+  const d = desiredChannels(matches, MARKETS, 4);
+  assert.equal(d.length, 4, "capped at 4");
+  assert.deepEqual(
+    d.map((x) => x.match.match_id),
+    ["demo-replay-a-c1", "demo-replay-c-c1", "10", "11"],
+    "first 4 in calibre's next-up order",
+  );
+});
+
+test("desiredChannels with no limit returns all valid (back-compat)", () => {
+  const matches: UpcomingMatch[] = [mk("1", "NRG", "Sentinels"), mk("4", "EG", "C9")];
+  assert.equal(desiredChannels(matches, MARKETS).length, 2);
 });
