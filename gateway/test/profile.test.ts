@@ -71,9 +71,12 @@ const CLAN: ClanProfile = {
   median_brier_skill: 0.28,
   roi: 0.42,
   top_member: "demo",
+  avatar: "https://app.hicalibre.gg/api/v1/clans/sharks/avatar.svg",
+  url: "https://app.hicalibre.gg/#clan/sharks",
+  description: "Calibre clan — 7 members · avg Edge",
 };
 
-test("clan record keys are the gg.calibre.clan.* aggregate keys", () => {
+test("clan record keys are the gg.calibre.clan.* aggregates + the ENS-standard render keys", () => {
   assert.deepEqual(
     new Set(Object.keys(CLAN_TEXT_RECORD_KEYS)),
     new Set([
@@ -83,6 +86,10 @@ test("clan record keys are the gg.calibre.clan.* aggregate keys", () => {
       "gg.calibre.clan.median",
       "gg.calibre.clan.roi",
       "gg.calibre.clan.top",
+      // ENS-standard keys (#633) so a bare clan name renders in generic ENS UIs.
+      "avatar",
+      "url",
+      "description",
     ]),
   );
 });

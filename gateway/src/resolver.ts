@@ -24,6 +24,7 @@ import {
 } from "viem";
 import {
   type ClanClient,
+  type ClanProfile,
   type ProfileClient,
   type PublicProfile,
   addrRecord,
@@ -142,30 +143,25 @@ export async function handleResolve(
   const name = decodeDnsName(dnsName);
   const displayName = displayNameFor(name);
   const profile = displayName ? await profiles.fetch(displayName) : null;
+  // A bare `<clan>.hicalibre.eth` with no matching user resolves clan-aggregate
+  // records — fetch the clan ONCE here (user-first: a real user short-circuits
+  // it, #583) so a batched multicall doesn't re-aggregate the clan per sub-call.
+  const clanLabel = profile ? null : bareClanLabelFor(name);
+  const clan = clanLabel ? await clans.fetch(clanLabel) : null;
 
   // A batched `multicall(bytes[])` — answer every sub-call against the single
-  // profile above (they all target the same name) and return abi-encoded
+  // profile/clan above (they all target the same name) and return abi-encoded
   // `bytes[]`. This is the path the ENS app uses to read a whole profile (#633).
   if (innerData.slice(0, 10).toLowerCase() === MULTICALL_SELECTOR) {
     const { args: mcArgs } = decodeFunctionData({ abi: MULTICALL_ABI, data: innerData });
     const calls = mcArgs[0] as readonly Hex[];
-    const results = await Promise.all(
-      calls.map((call) => answerRecord(call, name, profile, clans)),
-    );
+    const results = calls.map((call) => answerRecord(call, profile, clan));
     return { result: encodeAbiParameters([{ type: "bytes[]" }], [results]) };
   }
 
-  return { result: await answerRecord(innerData, name, profile, clans) };
+  return { result: answerRecord(innerData, profile, clan) };
 }
 
-/**
- * Answer ONE inner record call (`addr` / `text`) against an already-fetched
- * profile, returning the inner call's return type ABI-encoded directly — the
- * same `bytes` a single `resolve()` yields, and one element of a `multicall`
- * `bytes[]`. A record function we don't serve (e.g. `contenthash`) → empty
- * bytes, so a batched read still succeeds for the records we DO serve and there
- * is no enumeration oracle.
- */
 /** Decode an inner record call, or null if it's a selector we don't serve. */
 function decodeRecordCall(data: Hex) {
   try {
@@ -175,12 +171,19 @@ function decodeRecordCall(data: Hex) {
   }
 }
 
-async function answerRecord(
+/**
+ * Answer ONE inner record call (`addr` / `text`) against the already-fetched
+ * profile (and pre-fetched clan, for a bare clan name), returning the inner
+ * call's return type ABI-encoded directly — the same `bytes` a single
+ * `resolve()` yields, and one element of a `multicall` `bytes[]`. A record
+ * function we don't serve (e.g. `contenthash`) → empty bytes, so a batched read
+ * still succeeds for the records we DO serve and there is no enumeration oracle.
+ */
+function answerRecord(
   innerData: Hex,
-  name: string,
   profile: PublicProfile | null,
-  clans: ClanClient,
-): Promise<Hex> {
+  clan: ClanProfile | null,
+): Hex {
   const inner = decodeRecordCall(innerData);
   if (!inner) return "0x"; // unsupported record selector (e.g. contenthash) → unset
 
@@ -205,13 +208,12 @@ async function answerRecord(
     case "text": {
       const key = inner.args[1] as string;
       let value = profile ? textRecord(profile, key) : "";
-      // Clan fallback: a bare clan name with no matching user, queried for a
-      // clan-aggregate key, resolves the clan profile. User-first (profile !==
-      // null short-circuits this) keeps a real user resolving as a user (#583).
-      if (!profile && isClanRecordKey(key)) {
-        const clanLabel = bareClanLabelFor(name);
-        const clan = clanLabel ? await clans.fetch(clanLabel) : null;
-        value = clan ? clanTextRecord(clan, key) : "";
+      // Clan fallback: a bare clan name with no matching user resolves the
+      // pre-fetched clan profile for any clan-served key (incl. the ENS-standard
+      // avatar/url/description). User-first (profile !== null short-circuits this)
+      // keeps a real user resolving as a user (#583).
+      if (!profile && clan && isClanRecordKey(key)) {
+        value = clanTextRecord(clan, key);
       }
       return encodeAbiParameters([{ type: "string" }], [value]);
     }
