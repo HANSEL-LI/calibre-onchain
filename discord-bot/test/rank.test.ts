@@ -112,6 +112,33 @@ test("rankReader returns null for an unset record", async () => {
   assert.equal(await reader.rankOf("nobody.calibre.eth"), null);
 });
 
+test("cardOf reads rank+roi+brier for the ephemeral self-view", async () => {
+  const reader = createRankReader(
+    "http://unused",
+    PARENT,
+    stubClient({
+      "demo.calibre.eth|gg.calibre.rank": "Seer",
+      "demo.calibre.eth|gg.calibre.roi": "0.42",
+      "demo.calibre.eth|gg.calibre.brier": "0.58",
+    }),
+  );
+  assert.deepEqual(await reader.cardOf("demo.calibre.eth"), {
+    rank: "Seer",
+    roi: "0.42",
+    brier: "0.58",
+  });
+});
+
+test("cardOf returns null for an unaccepted name; unset fields become null", async () => {
+  const reader = createRankReader(
+    "http://unused",
+    PARENT,
+    stubClient({ "x.calibre.eth|gg.calibre.rank": "Edge" }),
+  );
+  assert.equal(await reader.cardOf("foreign.eth"), null);
+  assert.deepEqual(await reader.cardOf("x.calibre.eth"), { rank: "Edge", roi: null, brier: null });
+});
+
 test("rankReader returns null (no resolve) for an unaccepted name", async () => {
   let called = false;
   const client: EnsClient = {
