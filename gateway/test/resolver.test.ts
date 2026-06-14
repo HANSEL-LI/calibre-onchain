@@ -51,6 +51,9 @@ const DEMO: PublicProfile = {
   discord_handle: "demo#1234",
   riot_id: "Demo#NA1",
   clan: "sharks",
+  avatar: "https://app.hicalibre.gg/api/v1/profiles/demo/avatar.svg",
+  url: "https://app.hicalibre.gg/#profile/demo",
+  description: "Calibre forecaster — diamond",
 };
 
 function stubClient(byName: Record<string, PublicProfile>): ProfileClient {

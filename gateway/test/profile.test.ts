@@ -3,9 +3,41 @@ import { test } from "node:test";
 import {
   CLAN_TEXT_RECORD_KEYS,
   type ClanProfile,
+  type PublicProfile,
   clanTextRecord,
   isClanRecordKey,
+  textRecord,
 } from "../src/profile.js";
+
+// ── ENS-standard avatar / url / description records (#596) ──
+
+const USER: PublicProfile = {
+  display_name: "demo",
+  tier: "Sharp",
+  brier_skill: 0.42,
+  roi: 1.5,
+  pnl: 12345,
+  wallet_address: "0xabc",
+  discord_handle: "demo#1234",
+  riot_id: "Demo#NA1",
+  clan: "sharks",
+  avatar: "https://app.hicalibre.gg/api/v1/profiles/demo/avatar.svg",
+  url: "https://app.hicalibre.gg/#profile/demo",
+  description: "Calibre forecaster — Sharp",
+};
+
+test("ENS-standard avatar/url/description map straight from the profile", () => {
+  assert.equal(textRecord(USER, "avatar"), USER.avatar);
+  assert.equal(textRecord(USER, "url"), USER.url);
+  assert.equal(textRecord(USER, "description"), USER.description);
+});
+
+test("a null ENS-standard value resolves to the empty (unset) record", () => {
+  const blank: PublicProfile = { ...USER, avatar: null, url: null, description: null };
+  assert.equal(textRecord(blank, "avatar"), "");
+  assert.equal(textRecord(blank, "url"), "");
+  assert.equal(textRecord(blank, "description"), "");
+});
 
 const CLAN: ClanProfile = {
   clan: "sharks",

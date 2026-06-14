@@ -11,13 +11,16 @@ canonical ``gg.calibre.*`` record keys).
 from __future__ import annotations
 
 from .keys import (
+    AVATAR_KEY,
     BRIER_KEY,
     CLAN_KEY,
+    DESCRIPTION_KEY,
     DISCORD_KEY,
     RANK_KEY,
     RIOT_KEY,
     ROI_KEY,
     TEXT_KEYS,
+    URL_KEY,
 )
 from .tiers import all_tiers, tier_for_percentile
 
@@ -33,4 +36,7 @@ __all__ = [
     "CLAN_KEY",
     "RIOT_KEY",
     "DISCORD_KEY",
+    "AVATAR_KEY",
+    "URL_KEY",
+    "DESCRIPTION_KEY",
 ]
