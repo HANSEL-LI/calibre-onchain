@@ -23,10 +23,43 @@ export const LADDER_TIERS = [
 
 export type Tier = (typeof LADDER_TIERS)[number];
 
-/** The Discord role name for a tier. 1:1 map (issue scope: no clan roles). */
+/** The Discord role name for a tier — the bare tier label (e.g. "Oracle"). */
 export function roleNameForTier(tier: Tier): string {
+  return tier;
+}
+
+/**
+ * The pre-rename role name this bot used to create (`calibre:<Tier>`). Kept so
+ * {@link ensureManagedRoles} can find and rename existing roles in place rather
+ * than orphaning them and creating bare-named duplicates.
+ */
+export function legacyRoleNameForTier(tier: Tier): string {
   return `calibre:${tier}`;
 }
+
+/**
+ * Per-tier presentation. `color` is the Discord role colour (0xRRGGBB) on the
+ * prism ladder — cool→warm as prestige climbs, gold at the apex. `hoist` shows
+ * the role as its own group in the member sidebar; only the top three ranks are
+ * hoisted so elite status stands out without cluttering the list. `emoji` is a
+ * unicode role icon (best-effort — requires guild Boost level 2, applied in a
+ * try/catch so non-boosted guilds simply skip it).
+ */
+export interface TierStyle {
+  color: number;
+  hoist: boolean;
+  emoji: string;
+}
+
+export const TIER_STYLE: Record<Tier, TierStyle> = {
+  Static: { color: 0x6e7178, hoist: false, emoji: "▪️" },
+  Hunch: { color: 0x2fa572, hoist: false, emoji: "🌱" },
+  Read: { color: 0x3b9dd6, hoist: false, emoji: "👁️" },
+  Edge: { color: 0x7c5cfc, hoist: false, emoji: "⚡" },
+  Sharp: { color: 0xe0457b, hoist: true, emoji: "🎯" },
+  Seer: { color: 0xf0922b, hoist: true, emoji: "🔮" },
+  Oracle: { color: 0xf5c518, hoist: true, emoji: "👑" },
+};
 
 /** Every role name this bot manages — exactly the per-tier roles, nothing else. */
 export const MANAGED_ROLE_NAMES: readonly string[] = LADDER_TIERS.map(roleNameForTier);
