@@ -33,14 +33,24 @@ import {CalibreMarket} from "./CalibreMarket.sol";
 ///
 ///         NON-ATOMICITY: the CCTP mint and the hook call are separate steps by
 ///         design — if the hook call fails, USDC is already minted to this
-///         contract. Two guards keep funds safe: (a) dust below one whole set is
-///         REFUNDED, never reverted, so a relay never strands the full amount;
-///         (b) `sweep` is a permissionless escape hatch that flushes any stuck
-///         balance to a recipient by minting/refunding. The contract holds no
-///         funds between calls and is therefore ownerless: it can only ever mint
-///         a fully-USDC-backed complete set and hand both legs to the
-///         caller-named recipient (see Decisions in
-///         `docs/plans/613-cctp-mint-hook.md`).
+///         contract. In the happy path (one atomic relay tx) the hook nets to zero
+///         and there is nothing to steal. Two guards cover the unhappy path: (a)
+///         dust below one whole set is REFUNDED, never reverted, so a relay never
+///         strands the full amount; (b) `sweep` is a permissionless escape hatch
+///         that flushes any stuck balance by minting/refunding.
+///
+///         SECURITY CAVEAT — a stranded balance is first-mover-claimable. Both
+///         entrypoints mint from this contract's ENTIRE current USDC balance to a
+///         CALLER-SUPPLIED `recipient`, with no per-depositor accounting. CCTP does
+///         NOT enforce that the `hookData` target equals the burn `mintRecipient`,
+///         so a mis-encoded hook target (or a relayer that never fires the hook)
+///         leaves the user's FULL bridged amount on this contract — and any caller
+///         can then `sweep(id, attacker)` to mint a redeemable complete set funded
+///         by it. The stranded amount is NOT bounded to dust; this is theft of
+///         value, not a harmless reassignment. Binding stranded funds to their
+///         rightful recipient is a tracked hardening follow-up (Calibre#647); the
+///         happy path is unaffected. See Decisions in
+///         `docs/plans/613-cctp-mint-hook.md`.
 contract DepositAndMintHook {
     /// @notice The 6-decimal ERC-20 USDC token shares mint against. Read from the
     ///         injected market so the two can never disagree on the asset.
@@ -90,8 +100,14 @@ contract DepositAndMintHook {
 
     /// @notice Escape hatch for funds stuck here after a non-atomic relay (e.g. a
     ///         hook call that reverted with `NothingToMint`, or a stray transfer).
-    ///         Permissionless: it can only mint a fully-backed complete set to
-    ///         `recipient` and refund the remainder — there is nothing to steal.
+    ///         Mints a fully-backed complete set to `recipient` and refunds the
+    ///         remainder.
+    /// @dev    Semantic ALIAS of `depositAndMint` — identical body, retained only
+    ///         for caller clarity as a named recovery path (do not hunt for a
+    ///         behavioral difference). Permissionless, and therefore subject to the
+    ///         first-mover-claimable caveat in the contract-level NatSpec: a
+    ///         genuinely-stranded non-dust balance can be swept by any caller to any
+    ///         recipient.
     /// @param chainMarketId the market to mint any whole sets on.
     /// @param recipient     who receives the minted legs + any dust.
     function sweep(uint256 chainMarketId, address recipient) external returns (uint256 sets) {

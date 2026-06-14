@@ -101,14 +101,28 @@ inside `market.mint` (`UnknownMarket`) — surfaced, not swallowed.
   `sets == 0` (less than one whole unit bridged) we revert `NothingToMint`; in
   that non-atomic-failure case the dust sits in the hook recoverable by a
   `sweep` (owner-less, recipient-directed) — see below.
-- **Permissionless, stateless, custody-light.** The hook holds no funds between
-  calls (it forwards shares + refunds dust in the same tx). It is therefore
-  ownerless and needs no access control: it can only ever mint a complete set
-  (fully USDC-backed by construction in `CalibreMarket`) and hand both legs to the
-  caller-named recipient. Worst case a griefer calls `depositAndMint` with someone
-  else's stranded dust as recipient — harmless. A `sweep(recipient)` lets anyone
+- **Permissionless, stateless, custody-light — with one caveat (see Security).**
+  In the happy path the hook holds no funds between calls (it forwards shares +
+  refunds dust in the same tx), so it is ownerless and needs no access control: it
+  mints a complete set (fully USDC-backed by construction in `CalibreMarket`) and
+  hands both legs to the caller-named recipient. A `sweep(recipient)` lets anyone
   flush a stuck balance (e.g. after a `NothingToMint` revert) to a recipient by
   minting/refunding; kept minimal.
+- **Security — a stranded balance is first-mover-claimable, not "harmless dust".**
+  `_depositAndMint` mints from the hook's *entire* current USDC balance to a
+  **caller-supplied** `recipient`, with no per-depositor accounting. CCTP does NOT
+  enforce that the `hookData` target equals the burn's `mintRecipient` (verified
+  against Circle's `CCTPHookWrapper`), so if a user sets `mintRecipient = hook` but
+  mis-encodes the hook target — or the relayer never fires the hook — their **full**
+  bridged amount sits on the hook, and *any* caller can then `sweep(id, attacker)`
+  to mint a redeemable/tradeable complete set funded by that USDC. The stranded
+  amount is **not** bounded to dust and the griefer names *themselves*, so this is
+  theft of value, not a harmless reassignment. It does not affect the happy path
+  (one atomic relay tx where the hook nets to zero), but the escape hatch is
+  first-mover-wins. Hardening — bind stranded funds to their rightful recipient
+  (derive `recipient` from the CCTP message, or accrue per-`mintRecipient` credit)
+  — is tracked as a follow-up (Calibre#647), not folded into this PR, since it is a
+  larger redesign than the happy-path mint this PR scopes.
 - **No `usdcUnit` of its own** — read through `market.usdcUnit()` so the hook and
   market can never disagree on the unit (single source of truth).
 - **`approve` exact, every call.** We approve `sets * usdcUnit` immediately before

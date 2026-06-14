@@ -7,6 +7,7 @@ import {DepositAndMintHook} from "../src/DepositAndMintHook.sol";
 import {IERC20} from "../src/IERC20.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {MockHookRelay} from "./mocks/MockHookRelay.sol";
+import {MockFalseTransferUSDC} from "./mocks/MockFalseTransferUSDC.sol";
 
 /// @dev #613 coverage for the CCTP V2 bridge-and-mint-on-arrival hook. Drives the
 ///      real DepositAndMintHook through a mock relay that reproduces Circle's
@@ -136,6 +137,26 @@ contract DepositAndMintHookTest is Test {
         assertEq(market.noBalance(MARKET_ID, alice), 4, "4 NO to recipient");
         assertEq(usdc.balanceOf(address(market)), 4 * unit, "USDC locked");
         assertEq(usdc.balanceOf(address(hook)), 0, "hook drained");
+    }
+
+    // --- revert: dust refund leg fails on a false-returning USDC -----------
+
+    function test_RevertWhen_RefundReturnsFalse() public {
+        // A USDC whose transfer() returns false without reverting. The mint path
+        // (transferFrom/approve) still works, so the revert can only come from the
+        // hook's `_refund` boolean check on the dust leg — exercising UsdcTransferFailed.
+        MockFalseTransferUSDC badUsdc = new MockFalseTransferUSDC();
+        CalibreMarket badMarket = new CalibreMarket(IERC20(address(badUsdc)), resolver);
+        DepositAndMintHook badHook = new DepositAndMintHook(badMarket);
+
+        vm.prank(resolver);
+        badMarket.createMarket(MARKET_ID);
+
+        // Fund with dust so `_refund` is reached (no dust → no refund → no revert).
+        badUsdc.mint(address(badHook), 3 * unit + 50_000);
+
+        vm.expectRevert(DepositAndMintHook.UsdcTransferFailed.selector);
+        badHook.depositAndMint(MARKET_ID, alice);
     }
 
     // --- constructor guard -------------------------------------------------

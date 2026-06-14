@@ -21,6 +21,11 @@ contract MockHookRelay {
 
     /// @param amount   USDC amount the burn minted to `mintRecipient`.
     /// @param hookData Circle's hook payload: `abi.encodePacked(target, hookCallData)`.
+    /// @dev    The real `CCTPHookWrapper.relay` returns a 3-tuple
+    ///         `(bool relaySuccess, bool hookSuccess, bytes hookReturnData)`; this
+    ///         mock collapses `relaySuccess` (always true post-attestation here)
+    ///         and surfaces only `(hookSuccess, hookReturnData)`, which is all the
+    ///         tests consume. Don't model the real return shape off this mock.
     function relay(uint256 amount, bytes calldata hookData)
         external
         returns (bool hookSuccess, bytes memory hookReturnData)
