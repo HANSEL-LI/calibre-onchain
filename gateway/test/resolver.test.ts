@@ -83,6 +83,9 @@ const SHARKS_CLAN: ClanProfile = {
   median_brier_skill: 0.28,
   roi: 0.42,
   top_member: "demo",
+  avatar: "https://app.hicalibre.gg/api/v1/clans/sharks/avatar.svg",
+  url: "https://app.hicalibre.gg/#clan/sharks",
+  description: "Calibre clan — 7 members · avg Edge",
 };
 
 // `result` is the `bytes` return of ENSIP-10 resolve() — the inner record call's
@@ -307,6 +310,52 @@ test("clan size / avgrank / brier / median / roi / top map through", async () =>
   assert.equal(await resolveKey("gg.calibre.clan.median"), "0.28");
   assert.equal(await resolveKey("gg.calibre.clan.roi"), "0.42");
   assert.equal(await resolveKey("gg.calibre.clan.top"), "demo");
+});
+
+test("ENS-standard avatar/url/description resolve for a bare clan name (#633)", async () => {
+  const clans = stubClanClient({ sharks: SHARKS_CLAN });
+  const key = (k: string) =>
+    encodeFunctionData({ abi: RECORD_ABI, functionName: "text", args: [NODE, k] });
+  const resolveKey = async (k: string) =>
+    unwrapText(
+      (await handleResolve(resolveCall("sharks.calibre.eth", key(k)), stubClient({}), clans)).result,
+    );
+  assert.equal(await resolveKey("avatar"), SHARKS_CLAN.avatar);
+  assert.equal(await resolveKey("description"), SHARKS_CLAN.description);
+  assert.equal(await resolveKey("url"), SHARKS_CLAN.url);
+});
+
+test("a bare clan name renders via multicall (avatar + description + a clan stat)", async () => {
+  const MULTICALL_ABI = parseAbi(["function multicall(bytes[] data) view returns (bytes[])"]);
+  const t = (k: string) => encodeFunctionData({ abi: RECORD_ABI, functionName: "text", args: [NODE, k] });
+  const addrCall = encodeFunctionData({ abi: RECORD_ABI, functionName: "addr", args: [NODE] });
+  const inner = encodeFunctionData({
+    abi: MULTICALL_ABI,
+    functionName: "multicall",
+    args: [[addrCall, t("avatar"), t("description"), t("gg.calibre.clan.size")]],
+  });
+  const { result } = await handleResolve(
+    resolveCall("sharks.calibre.eth", inner),
+    stubClient({}),
+    stubClanClient({ sharks: SHARKS_CLAN }),
+  );
+  const [results] = decodeAbiParameters([{ type: "bytes[]" }], result) as [Hex[]];
+  assert.equal(unwrapAddr(results[0]), "0x0000000000000000000000000000000000000000"); // clans have no wallet
+  assert.equal(unwrapText(results[1]), SHARKS_CLAN.avatar);
+  assert.equal(unwrapText(results[2]), SHARKS_CLAN.description);
+  assert.equal(unwrapText(results[3]), "7");
+});
+
+test("a real user's avatar wins over the clan path (user-first)", async () => {
+  // demo.sharks.calibre.eth is a user leaf — `avatar` resolves the USER's avatar,
+  // never the clan's, even though a clan "sharks" also exists.
+  const inner = encodeFunctionData({ abi: RECORD_ABI, functionName: "text", args: [NODE, "avatar"] });
+  const { result } = await handleResolve(
+    resolveCall("demo.sharks.calibre.eth", inner),
+    stubClient({ demo: DEMO }),
+    stubClanClient({ sharks: SHARKS_CLAN }),
+  );
+  assert.equal(unwrapText(result), DEMO.avatar);
 });
 
 test("clan top/median on an unscored clan resolve to empty (no oracle)", async () => {

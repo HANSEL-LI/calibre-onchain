@@ -118,6 +118,11 @@ export interface ClanProfile {
   median_brier_skill: number | null;
   roi: number | null; // Σ net / Σ deployed; null below the deployed floor
   top_member: string | null; // highest-skill member's display_name; null if none scored
+  // ENS-standard records (#633) so a bare <clan>.hicalibre.eth renders as a
+  // profile in generic ENS UIs, derived calibre-side like the per-user records.
+  avatar: string | null; // https URL of the generated clan avatar SVG
+  url: string | null; // the clan's public calibre profile link
+  description: string | null; // short derived one-liner ("Calibre clan — N members · avg {tier}")
 }
 
 /** ENS text-record keys served on a bare clan name → the clan-card field. */
@@ -128,6 +133,11 @@ export const CLAN_TEXT_RECORD_KEYS = {
   "gg.calibre.clan.median": (c: ClanProfile) => fmtNum(c.median_brier_skill),
   "gg.calibre.clan.roi": (c: ClanProfile) => fmtNum(c.roi),
   "gg.calibre.clan.top": (c: ClanProfile) => c.top_member ?? "",
+  // ENS-standard keys (#633) — same as the per-user keys, so the ENS app renders
+  // a clan name's avatar + description for free.
+  avatar: (c: ClanProfile) => c.avatar ?? "",
+  url: (c: ClanProfile) => c.url ?? "",
+  description: (c: ClanProfile) => c.description ?? "",
 } as const satisfies Record<string, (c: ClanProfile) => string>;
 
 export type ClanTextRecordKey = keyof typeof CLAN_TEXT_RECORD_KEYS;
