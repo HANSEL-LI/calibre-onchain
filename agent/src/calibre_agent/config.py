@@ -68,8 +68,10 @@ class AgentConfig:
     `dynamic_wallet_id` adopts an already-provisioned wallet (no re-provision);
     leaving them empty provisions a fresh MPC wallet at startup."""
     dynamic_threshold_scheme: str = "TWO_OF_TWO"
-    """MPC threshold signature scheme passed to create_wallet_account
-    (TWO_OF_TWO default; TWO_OF_THREE / THREE_OF_FIVE also supported by Dynamic)."""
+    """MPC threshold signature scheme passed to create_wallet_account, resolved to
+    the SDK's ``ThresholdSignatureScheme`` enum in the signer. The SDK supports
+    exactly ``TWO_OF_TWO`` and ``TWO_OF_THREE``; ``TWO_OF_TWO`` is the default for a
+    single-server-controlled agent wallet (server + Dynamic each hold one share)."""
     agent_private_key: str = ""  # local-key fallback (testnet only)
 
     # --- voucher source (W1.2 buy leg; one of these selects the source) ---

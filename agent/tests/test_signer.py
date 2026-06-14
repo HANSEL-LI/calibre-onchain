@@ -17,6 +17,7 @@ persisted, and that signer selection gates correctly.
 """
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass
 
 import pytest
@@ -26,11 +27,30 @@ from calibre_agent.signer import (
     DynamicServerWallet,
     LocalKeySigner,
     SecretRef,
+    _default_scheme_resolver,
+    _legacy_tx,
     build_signer,
 )
 
 
 # ---- faithful fake of the dynamic-wallet-sdk client ------------------------
+class FakeThresholdSignatureScheme(enum.Enum):
+    """Mirrors the real SDK's ``ThresholdSignatureScheme`` enum (the SDK supports
+    exactly these two members — no THREE_OF_FIVE)."""
+
+    TWO_OF_TWO = "TWO_OF_TWO"
+    TWO_OF_THREE = "TWO_OF_THREE"
+
+
+def _fake_scheme_resolver(name: str) -> FakeThresholdSignatureScheme:
+    """Resolve a config string to the fake SDK enum, mirroring the real resolver:
+    reject any scheme the SDK does not define (ValueError), else return the enum."""
+    try:
+        return FakeThresholdSignatureScheme[name]
+    except KeyError:
+        raise ValueError(f"unsupported Dynamic threshold scheme {name!r}")
+
+
 @dataclass
 class _FakeWalletProperties:
     account_address: str
@@ -122,13 +142,23 @@ def test_provisions_new_wallet_and_persists_only_nonsensitive_metadata():
         password=SecretRef("pw-1"),
         threshold_signature_scheme="TWO_OF_TWO",
         client_factory=_factory_capturing(clients),
+        scheme_resolver=_fake_scheme_resolver,
     )
     assert w.address == "0xMPCWALLET"
     assert w.wallet_id == "wallet-xyz"
     # Authenticated with the token, then created the MPC wallet with the scheme.
     c = clients[0]
     assert ("authenticate_api_token", "tok-1") in c.calls
-    assert ("create_wallet_account", "TWO_OF_TWO", "pw-1") in c.calls
+    # The scheme MUST be passed as the SDK enum, not a bare string — a string
+    # would silently bypass the real SDK's enum contract. Assert on enum type +
+    # value so a regression to a raw string fails this test.
+    create_calls = [x for x in c.calls if x[0] == "create_wallet_account"]
+    assert len(create_calls) == 1
+    _, passed_scheme, passed_pw = create_calls[0]
+    assert isinstance(passed_scheme, FakeThresholdSignatureScheme)
+    assert passed_scheme is FakeThresholdSignatureScheme.TWO_OF_TWO
+    assert not isinstance(passed_scheme, str)
+    assert passed_pw == "pw-1"
     # Non-sensitive metadata only — never the password/token.
     meta = w.wallet_metadata
     assert meta == {
@@ -154,6 +184,68 @@ def test_adopts_existing_wallet_without_reprovisioning():
     # No create_wallet_account call when both ids are supplied.
     create_calls = [x for x in clients[0].calls if x[0] == "create_wallet_account"]
     assert create_calls == []
+
+
+def test_default_scheme_resolver_rejects_unsupported_before_sdk_import():
+    """The real resolver rejects a non-SDK scheme by name (THREE_OF_FIVE was never
+    a real scheme) BEFORE importing the SDK, so the guard holds without the
+    optional dependency installed."""
+    with pytest.raises(ValueError):
+        _default_scheme_resolver("THREE_OF_FIVE")
+
+
+def test_provision_rejects_unsupported_scheme():
+    """THREE_OF_FIVE (and any non-SDK scheme) is rejected at provision time — the
+    SDK supports only TWO_OF_TWO / TWO_OF_THREE."""
+    clients: list = []
+    with pytest.raises(ValueError):
+        DynamicServerWallet(
+            environment_id="env-1",
+            api_token=SecretRef("tok"),
+            threshold_signature_scheme="THREE_OF_FIVE",
+            client_factory=_factory_capturing(clients),
+            scheme_resolver=_fake_scheme_resolver,
+        )
+
+
+# ---- legacy-tx enforcement (Dynamic SDK signs legacy gasPrice txs only) ------
+def test_legacy_tx_strips_eip1559_fee_fields():
+    tx = {
+        "to": "0xTo", "nonce": 0, "gas": 21000, "gasPrice": 7, "chainId": 1,
+        "maxFeePerGas": 99, "maxPriorityFeePerGas": 2, "type": 2,
+    }
+    out = _legacy_tx(tx)
+    assert out["gasPrice"] == 7
+    assert "maxFeePerGas" not in out
+    assert "maxPriorityFeePerGas" not in out
+    assert "type" not in out
+
+
+def test_legacy_tx_requires_gas_price():
+    with pytest.raises(ValueError):
+        _legacy_tx({"to": "0xTo", "nonce": 0, "maxFeePerGas": 99,
+                    "maxPriorityFeePerGas": 2, "chainId": 1})
+
+
+def test_send_transaction_hands_sdk_a_legacy_tx():
+    """A 1559-shaped tx is coerced to legacy before it reaches the SDK."""
+    clients: list = []
+    w = DynamicServerWallet(
+        environment_id="env-1",
+        api_token=SecretRef("tok"),
+        wallet_id="w1",
+        account_address="0xADDR",
+        client_factory=_factory_capturing(clients),
+    )
+    tx = {"to": "0xTo", "nonce": 0, "gas": 21000, "gasPrice": 5, "chainId": 1,
+          "maxFeePerGas": 99, "maxPriorityFeePerGas": 2, "type": 2}
+    w.send_transaction(tx)
+    _, _, sent_tx, _ = [x for x in clients[-1].calls
+                        if x[0] == "send_transaction"][0]
+    assert sent_tx["gasPrice"] == 5
+    assert "maxFeePerGas" not in sent_tx
+    assert "maxPriorityFeePerGas" not in sent_tx
+    assert "type" not in sent_tx
 
 
 # ---- DynamicServerWallet: signing/broadcast --------------------------------

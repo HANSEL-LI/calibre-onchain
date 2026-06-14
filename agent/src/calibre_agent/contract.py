@@ -199,16 +199,25 @@ class MarketClient:
 
     def _send(self, fn) -> str:
         nonce = self._w3.eth.get_transaction_count(self._signer.address)
-        tx = fn.build_transaction({
-            "chainId": self._chain_id,
-            "from": self._signer.address,
-            "nonce": nonce,
-        })
         # A broadcasting signer (the Dynamic MPC SDK) signs *and* broadcasts in
         # one MPC round-trip and returns the tx hash; a raw-bytes signer
         # (eth-account) returns serialized bytes for us to broadcast. Prefer the
         # broadcasting path when the signer provides it (signer.py seam).
-        if hasattr(self._signer, "send_transaction"):
+        broadcasting = hasattr(self._signer, "send_transaction")
+        params = {
+            "chainId": self._chain_id,
+            "from": self._signer.address,
+            "nonce": nonce,
+        }
+        if broadcasting:
+            # The Dynamic SDK signs ONLY legacy ("gasPrice", no EIP-1559) txs.
+            # web3's build_transaction defaults to EIP-1559 fee fields unless a
+            # gasPrice is supplied, so force a legacy shape by pinning gasPrice
+            # from the node here (otherwise the SDK rejects the tx). The legacy
+            # invariant is also asserted defensively in DynamicServerWallet.
+            params["gasPrice"] = self._w3.eth.gas_price
+        tx = fn.build_transaction(params)
+        if broadcasting:
             return self._signer.send_transaction(tx)
         raw = self._signer.sign_transaction(tx)
         tx_hash = self._w3.eth.send_raw_transaction(raw)

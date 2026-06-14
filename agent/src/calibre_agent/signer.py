@@ -165,6 +165,7 @@ class DynamicServerWallet:
         account_address: str = "",
         rpc_url: str = "",
         client_factory: Optional[Callable[[str], object]] = None,
+        scheme_resolver: Optional[Callable[[str], object]] = None,
     ) -> None:
         self._environment_id = environment_id
         self._api_token = api_token
@@ -172,6 +173,10 @@ class DynamicServerWallet:
         self._scheme = threshold_signature_scheme
         self._rpc_url = rpc_url
         self._client_factory = client_factory or _default_client_factory
+        # Resolve the config string to the SDK's ThresholdSignatureScheme enum so
+        # create_wallet_account receives the documented enum, not a bare string
+        # (the SDK rejects an unknown string). Injectable for the faithful fake.
+        self._scheme_resolver = scheme_resolver or _default_scheme_resolver
 
         self._wallet_id = wallet_id
         self._account_address = account_address
@@ -188,7 +193,9 @@ class DynamicServerWallet:
                 await c.authenticate_api_token(self._api_token.resolve())
                 if not self._wallet_id or not self._account_address:
                     props = await c.create_wallet_account(
-                        threshold_signature_scheme=self._scheme,
+                        threshold_signature_scheme=self._scheme_resolver(
+                            self._scheme
+                        ),
                         password=self._resolve_password(),
                     )
                     # WalletProperties: non-sensitive identity fields only.
@@ -224,8 +231,13 @@ class DynamicServerWallet:
 
         The SDK signs only **legacy** transactions (``gasPrice``, no EIP-1559
         fields) and owns the JSON-RPC broadcast, so this is a
-        :class:`BroadcastingSigner`, not a raw-bytes signer.
+        :class:`BroadcastingSigner`, not a raw-bytes signer. The tx is coerced to
+        a legacy shape via :func:`_legacy_tx` before it reaches the SDK (which
+        rejects EIP-1559 fee fields); ``MarketClient`` already builds legacy on
+        this path, this is the defensive backstop.
         """
+
+        legacy_tx = _legacy_tx(tx)
 
         async def _run() -> str:
             client = self._client_factory(self._environment_id)
@@ -233,7 +245,7 @@ class DynamicServerWallet:
                 await c.authenticate_api_token(self._api_token.resolve())
                 kwargs: dict = {
                     "address": self._account_address,
-                    "tx": _jsonable_tx(tx),
+                    "tx": _jsonable_tx(legacy_tx),
                 }
                 if self._password is not None:
                     kwargs["password"] = self._resolve_password()
@@ -248,6 +260,33 @@ class DynamicServerWallet:
             f"DynamicServerWallet(env={self._environment_id!r}, "
             f"wallet_id={self._wallet_id!r}, address={self._account_address!r})"
         )
+
+
+# The schemes the dynamic-wallet-sdk actually supports (no THREE_OF_FIVE — that
+# was never a real SDK scheme). TWO_OF_TWO suits a single-server-controlled agent
+# wallet (server + Dynamic each hold one share).
+_SUPPORTED_SCHEMES = ("TWO_OF_TWO", "TWO_OF_THREE")
+
+
+def _default_scheme_resolver(name: str):
+    """Map a config scheme string to the SDK's ``ThresholdSignatureScheme`` enum.
+
+    The real SDK's ``create_wallet_account`` expects the enum, not a bare string,
+    so we resolve here and reject any name the SDK does not define. Lazy import so
+    the testnet artifact installs without the optional SDK."""
+    if name not in _SUPPORTED_SCHEMES:
+        raise ValueError(
+            f"unsupported Dynamic threshold scheme {name!r}; "
+            f"the dynamic-wallet-sdk supports only {', '.join(_SUPPORTED_SCHEMES)}"
+        )
+    try:
+        from dynamic_wallet_sdk import ThresholdSignatureScheme
+    except ImportError as exc:  # pragma: no cover - import-guard
+        raise RuntimeError(
+            "the Dynamic server-wallet path needs the 'dynamic-wallet-sdk' "
+            "package: pip install 'calibre-agent[server-wallet]'"
+        ) from exc
+    return ThresholdSignatureScheme[name]
 
 
 def _default_client_factory(environment_id: str):
@@ -273,6 +312,27 @@ def _await(coro):
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+# EIP-1559 fee fields the Dynamic SDK does not accept (legacy "gasPrice" only).
+_EIP1559_FIELDS = ("maxFeePerGas", "maxPriorityFeePerGas", "type", "accessList")
+
+
+def _legacy_tx(tx: dict) -> dict:
+    """Coerce ``tx`` to the legacy shape the Dynamic SDK requires: strip any
+    EIP-1559 fee fields and require a ``gasPrice``.
+
+    The Dynamic SDK signs only legacy txs (``gasPrice``, no ``maxFeePerGas`` /
+    ``maxPriorityFeePerGas``). ``MarketClient._send`` already pins ``gasPrice``
+    when it builds for a broadcasting signer; this is the defensive backstop so
+    a 1559-shaped tx can never reach the SDK from any caller."""
+    legacy = {k: v for k, v in tx.items() if k not in _EIP1559_FIELDS}
+    if "gasPrice" not in legacy or legacy["gasPrice"] in (None, ""):
+        raise ValueError(
+            "Dynamic server wallet requires a legacy tx with 'gasPrice' "
+            "(no EIP-1559 maxFeePerGas/maxPriorityFeePerGas)"
+        )
+    return legacy
 
 
 def _jsonable_tx(tx: dict) -> dict:
