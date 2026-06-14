@@ -61,6 +61,12 @@ export interface BotConfig {
    */
   matchChannelLimit: number;
   /**
+   * Max number of those channels that may be demo-replays — demos sort first in
+   * calibre's order, so without this cap they'd fill every slot and crowd out
+   * real fixtures. The remaining slots go to the soonest real matches. Default 2.
+   */
+  matchDemoChannelLimit: number;
+  /**
    * Shared secret for the verified identity push (#582). calibre HMAC-SHA256-
    * signs the raw webhook body with this; the ingest server verifies it
    * byte-for-byte. When empty the ingest server does not start (the bot still
@@ -103,6 +109,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     matchCategoryName: req(env, "MATCH_CATEGORY_NAME", "upcoming-matches"),
     matchArchiveCategoryName: req(env, "MATCH_ARCHIVE_CATEGORY_NAME", "match-archive"),
     matchChannelLimit: Number.parseInt(req(env, "MATCH_CHANNEL_LIMIT", "4"), 10),
+    matchDemoChannelLimit: Number.parseInt(req(env, "MATCH_DEMO_CHANNEL_LIMIT", "2"), 10),
     // Optional: empty secret => ingest server stays off (still no default, so
     // `req` can't be used here — the push is an opt-in surface).
     identityWebhookSecret: env.IDENTITY_WEBHOOK_SECRET ?? "",

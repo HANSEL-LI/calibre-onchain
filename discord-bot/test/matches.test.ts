@@ -205,3 +205,33 @@ test("desiredChannels with no limit returns all valid (back-compat)", () => {
   const matches: UpcomingMatch[] = [mk("1", "NRG", "Sentinels"), mk("4", "EG", "C9")];
   assert.equal(desiredChannels(matches, MARKETS).length, 2);
 });
+
+test("desiredChannels caps demos separately — extra demos yield to real matches", () => {
+  // calibre prepends demos; with 4 demos + reals, limit 4 / demoLimit 2 →
+  // 2 demos + the 2 soonest real fixtures.
+  const matches: UpcomingMatch[] = [
+    mk("demo-replay-a-c1", "Alpha", "Bravo"),
+    mk("demo-replay-c-c1", "Charlie", "Delta"),
+    mk("demo-replay-e-c1", "Echo", "Foxtrot"),
+    mk("demo-replay-g-c1", "Golf", "Hotel"),
+    mk("100", "India", "Juliet"),
+    mk("101", "Kilo", "Lima"),
+    mk("102", "Mike", "November"),
+  ];
+  const d = desiredChannels(matches, MARKETS, 4, 2);
+  assert.equal(d.length, 4, "total cap honoured");
+  assert.deepEqual(
+    d.map((x) => x.match.match_id),
+    ["demo-replay-a-c1", "demo-replay-c-c1", "100", "101"],
+    "2 demos then the 2 soonest reals",
+  );
+});
+
+test("demoLimit undefined keeps all demos (back-compat)", () => {
+  const matches: UpcomingMatch[] = [
+    mk("demo-replay-a-c1", "Alpha", "Bravo"),
+    mk("demo-replay-c-c1", "Charlie", "Delta"),
+    mk("demo-replay-e-c1", "Echo", "Foxtrot"),
+  ];
+  assert.equal(desiredChannels(matches, MARKETS).length, 3);
+});

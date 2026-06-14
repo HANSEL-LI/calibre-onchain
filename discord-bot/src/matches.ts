@@ -167,21 +167,30 @@ export interface DesiredChannel {
 /**
  * Build the desired channel set from the upcoming matches + open markets. Only
  * `upcoming`-status matches with both team names get a channel (a TBD/empty
- * matchup has no stable name). Capped at `limit` (the next N matches in
- * calibre's "next-up" order — demos first, then soonest real fixtures);
- * `undefined` means no cap. Channels beyond the cap are archived by the
+ * matchup has no stable name).
+ *
+ * Capped at `limit` (the next N matches in calibre's "next-up" order — demos
+ * first, then soonest real fixtures); `undefined` means no cap. `demoLimit`
+ * separately caps how many of those may be demo-replays — demos sort first, so
+ * without it they'd fill every slot; extra demos are skipped and their slots go
+ * to the soonest real matches. Channels beyond the cap are archived by the
  * reconcile (they're absent from the desired set). Pure.
  */
 export function desiredChannels(
   matches: readonly UpcomingMatch[],
   markets: readonly PublicMarket[],
   limit?: number,
+  demoLimit?: number,
 ): DesiredChannel[] {
   const out: DesiredChannel[] = [];
+  let demos = 0;
   for (const match of matches) {
     if (match.status && match.status !== "upcoming") continue;
     if (!match.team1.trim() || !match.team2.trim()) continue;
+    const demo = isDemoMatch(match);
+    if (demo && demoLimit !== undefined && demos >= demoLimit) continue;
     out.push({ match, name: channelNameFor(match), market: matchMarket(match, markets) });
+    if (demo) demos++;
     if (limit !== undefined && out.length >= limit) break;
   }
   return out;
