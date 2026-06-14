@@ -80,6 +80,14 @@ contract CalibreMarket {
     ///         Monotonically increasing; compared against `marketNotionalCap`.
     mapping(uint256 => uint256) public marketNotionalUsed;
 
+    /// @notice chainMarketId => cumulative USDC (6-dec) ever paid out via `sell`
+    ///         (#50). Bounded by the SAME `marketNotionalCap` as `buy`, but on a
+    ///         SEPARATE monotonic counter so the two directions (USDC pulled in
+    ///         on buys vs paid out on early exits) don't conflate. Belt-and-
+    ///         suspenders: a fully-compromised signer still can't drain more than
+    ///         `marketNotionalCap` from the counterparty per market via sells.
+    mapping(uint256 => uint256) public marketPayoutUsed;
+
     /// @notice chainMarketId => market state.
     mapping(uint256 => Market) public markets;
 
@@ -247,6 +255,18 @@ contract CalibreMarket {
         "Quote(uint256 marketId,address buyer,uint8 side,uint256 size,uint256 maxCost,uint256 nonce,uint256 expiry)"
     );
 
+    /// @dev The SellQuote typehash (#50, early-exit leg). DISTINCT from
+    ///      `_QUOTE_TYPEHASH` on purpose: a buy `Quote` signature must never be
+    ///      replayable against `sell` (nor vice versa). Field order is the frozen
+    ///      sell interface; the backend signer (`markets/onchain_voucher.py`)
+    ///      byte-matches it. `side` is 0=NO, 1=YES (maps to the core's `isYes`).
+    ///      `minPayout` is 6-decimal ERC-20 USDC base units (W8 §3); the contract
+    ///      pays exactly `minPayout` — the seller cannot be over- or under-paid,
+    ///      mirroring how `buy` charges exactly `maxCost` post-#465.
+    bytes32 internal constant _SELL_QUOTE_TYPEHASH = keccak256(
+        "SellQuote(uint256 marketId,address seller,uint8 side,uint256 size,uint256 minPayout,uint256 nonce,uint256 expiry)"
+    );
+
     /// @notice EIP-712 domain fields (W8 §3: chainId 5042002 on Arc testnet).
     string public constant EIP712_NAME = "CalibreMarket";
     string public constant EIP712_VERSION = "1";
@@ -267,6 +287,20 @@ contract CalibreMarket {
         uint256 expiry; // unix ts; signer sets <=30s out (W8 §5); contract checks < expiry
     }
 
+    /// @notice A backend sell voucher (#50). Verified by `sell`. See
+    ///         `_SELL_QUOTE_TYPEHASH`. The inverse of a `buy` `Quote`: the seller
+    ///         returns `size` shares of `side` to the counterparty and receives
+    ///         exactly `minPayout` USDC (6-dec) out.
+    struct SellQuote {
+        uint256 marketId; // chainMarketId the shares belong to
+        address seller; // the only address allowed to redeem this voucher (== msg.sender)
+        uint8 side; // 0 = NO, 1 = YES
+        uint256 size; // shares the seller returns to inventory
+        uint256 minPayout; // the signed USDC payout (6-dec); `sell` pays exactly this
+        uint256 nonce; // per-seller monotonic; shares the `nonces` counter with buy
+        uint256 expiry; // unix ts; signer sets <=30s out; contract checks < expiry
+    }
+
     event VoucherSignerChanged(address indexed previous, address indexed next);
     event CounterpartyChanged(address indexed previous, address indexed next);
     event MarketNotionalCapSet(uint256 indexed chainMarketId, uint256 cap);
@@ -279,6 +313,18 @@ contract CalibreMarket {
         uint256 cost,
         uint256 nonce
     );
+    /// @notice Emitted by `sell` (#50). The inverse of `Bought`: the seller
+    ///         returned `size` shares of the side to inventory for `payout` USDC.
+    ///         The calibre indexer (`onchain_indexer.py`) records this as the
+    ///         source-of-truth early-exit fill.
+    event Sold(
+        uint256 indexed chainMarketId,
+        address indexed seller,
+        bool isYes,
+        uint256 size,
+        uint256 payout,
+        uint256 nonce
+    );
 
     error SignerUnset();
     error CounterpartyUnset();
@@ -286,6 +332,7 @@ contract CalibreMarket {
     error VoucherExpired();
     error BadNonce();
     error WrongBuyer();
+    error WrongSeller();
     error BadSignature();
     error NotionalCapExceeded();
 
@@ -345,6 +392,17 @@ contract CalibreMarket {
         return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
     }
 
+    /// @notice Hash a SellQuote under EIP-712 (the digest `voucherSigner` signs
+    ///         for an early exit). Distinct typehash from `hashQuote`, so a buy
+    ///         signature never recovers here. Exposed for the backend signer's
+    ///         parity assertion.
+    function hashSellQuote(SellQuote calldata q) public view returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(_SELL_QUOTE_TYPEHASH, q.marketId, q.seller, q.side, q.size, q.minPayout, q.nonce, q.expiry)
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+    }
+
     /// @notice Execute a backend-signed price voucher: verify the EIP-712
     ///         signature against `voucherSigner`, enforce buyer / expiry /
     ///         monotonic nonce / optional notional cap, then pull exactly
@@ -398,6 +456,67 @@ contract CalibreMarket {
         if (cost != 0) _safeTransferFrom(q.buyer, counterparty, cost);
 
         emit Bought(q.marketId, q.buyer, isYes, q.size, cost, q.nonce);
+    }
+
+    /// @notice Execute a backend-signed SELL voucher (#50, early exit): the exact
+    ///         inverse of `buy`. Verify the EIP-712 signature against
+    ///         `voucherSigner`, enforce seller / expiry / monotonic nonce /
+    ///         optional notional cap, then move `q.size` shares of the signed side
+    ///         from the seller back to `counterparty` inventory and pay the seller
+    ///         exactly `q.minPayout` USDC pulled from `counterparty`.
+    /// @dev    SOLVENCY: a sell, like a buy, only moves shares and USDC between
+    ///         two EXTERNAL accounts (seller <-> counterparty). The contract's
+    ///         own locked USDC backing and the total outstanding complete sets are
+    ///         UNCHANGED, so the W1.1 invariant (every YES+NO pair backed by one
+    ///         locked USDC unit) holds exactly as it does for `buy`. The payout
+    ///         comes from the `counterparty`'s own USDC (which it accrues from
+    ///         buys / its float), never from the locked backing.
+    ///
+    ///         The payout is the signed `q.minPayout` itself — the seller can be
+    ///         neither over- nor under-paid (symmetry with the #465 `buy` fix that
+    ///         charges the signed `maxCost` directly). The nonce shares the SAME
+    ///         per-user `nonces` mapping as `buy`, so a user's buys and sells are
+    ///         one monotonic replay-protected sequence.
+    /// @param  q   the signed sell quote; `q.minPayout` is the USDC (6-dec) paid.
+    /// @param  sig the 65-byte ECDSA signature over `hashSellQuote(q)`.
+    function sell(SellQuote calldata q, bytes calldata sig) external {
+        if (voucherSigner == address(0)) revert SignerUnset();
+        if (counterparty == address(0)) revert CounterpartyUnset();
+        if (!markets[q.marketId].exists) revert UnknownMarket();
+        if (q.side > 1) revert InvalidSide();
+        if (q.size == 0) revert ZeroSets();
+        if (msg.sender != q.seller) revert WrongSeller();
+        if (block.timestamp >= q.expiry) revert VoucherExpired();
+        if (q.nonce != nonces[q.seller]) revert BadNonce();
+
+        // The payout is the signed amount; the seller is paid exactly this.
+        uint256 payout = q.minPayout;
+
+        // Verify the voucher signature BEFORE any state change.
+        if (_recover(hashSellQuote(q), sig) != voucherSigner) revert BadSignature();
+
+        // Optional per-market payout cap (belt-and-suspenders, mirror of buy's
+        // notional cap on a separate counter so the two directions don't conflate).
+        uint256 cap = marketNotionalCap[q.marketId];
+        if (cap != 0 && marketPayoutUsed[q.marketId] + payout > cap) revert NotionalCapExceeded();
+
+        // Effects: burn the nonce (single-use) and book the payout before the
+        // external USDC pull (checks-effects-interactions).
+        nonces[q.seller] = q.nonce + 1;
+        marketPayoutUsed[q.marketId] += payout;
+
+        // Move shares from the seller back to counterparty inventory. Reverts on
+        // InsufficientShares if the seller doesn't hold `q.size` of the side.
+        bool isYes = q.side == 1;
+        mapping(address => uint256) storage book = isYes ? yesBalance[q.marketId] : noBalance[q.marketId];
+        if (book[q.seller] < q.size) revert InsufficientShares();
+        book[q.seller] -= q.size;
+        book[counterparty] += q.size;
+
+        // Pay the seller from the counterparty's own USDC (reimburses the exit).
+        if (payout != 0) _safeTransferFrom(counterparty, q.seller, payout);
+
+        emit Sold(q.marketId, q.seller, isYes, q.size, payout, q.nonce);
     }
 
     /// @dev Build the EIP-712 domain separator for the current chain.
