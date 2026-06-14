@@ -20,6 +20,11 @@ export interface PublicProfile {
   discord_handle: string | null;
   riot_id: string | null;
   clan: string | null;
+  // ENS-standard records (#596), derived calibre-side from display_name + tier.
+  // Always-present strings on a resolved profile (typed null-safe for forward-compat).
+  avatar: string | null; // https URL of the rank-coloured generated avatar SVG
+  url: string | null; // the user's public calibre profile link
+  description: string | null; // short derived one-liner ("Calibre forecaster — {tier}")
 }
 
 /**
@@ -35,6 +40,12 @@ export const TEXT_RECORD_KEYS = {
   "com.discord": (p: PublicProfile) => p.discord_handle ?? "",
   "gg.calibre.riot": (p: PublicProfile) => p.riot_id ?? "",
   "gg.calibre.clan": (p: PublicProfile) => p.clan ?? "",
+  // ENS-standard keys (#596) — generic wallets / etherscan / the ENS app render
+  // these for free. calibre always sends a string; `?? ""` keeps the unset→"" (no
+  // record) semantics uniform and robust if a value ever comes back null.
+  avatar: (p: PublicProfile) => p.avatar ?? "",
+  url: (p: PublicProfile) => p.url ?? "",
+  description: (p: PublicProfile) => p.description ?? "",
 } as const satisfies Record<string, (p: PublicProfile) => string>;
 
 export type TextRecordKey = keyof typeof TEXT_RECORD_KEYS;
