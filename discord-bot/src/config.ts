@@ -63,6 +63,14 @@ export interface BotConfig {
   identityWebhookSecret: string;
   /** TCP port the identity-ingest HTTP server listens on (#582). */
   identityPort: number;
+  /**
+   * Service token for calibre's `GET /api/v1/markets/{id}/sides` (#581). Sent
+   * as `X-Calibre-Markets-Token`; grants the bot read access to the public
+   * "which side you're backing" data for the next match. When empty the
+   * side-role sync is OFF (the bot still runs rank roles + match channels) —
+   * the endpoint is fail-closed calibre-side, so a blank token would only 401.
+   */
+  marketsServiceToken: string;
 }
 
 function req(env: NodeJS.ProcessEnv, name: string, fallback?: string): string {
@@ -92,5 +100,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     // `req` can't be used here — the push is an opt-in surface).
     identityWebhookSecret: env.IDENTITY_WEBHOOK_SECRET ?? "",
     identityPort: Number.parseInt(req(env, "IDENTITY_PORT", "8090"), 10),
+    // Optional: empty token => side-role sync stays off (the calibre endpoint
+    // is fail-closed, so a blank token would only 401). Opt-in like the push.
+    marketsServiceToken: env.MARKETS_SERVICE_TOKEN ?? "",
   };
 }

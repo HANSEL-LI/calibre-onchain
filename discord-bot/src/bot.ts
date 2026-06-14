@@ -16,6 +16,7 @@ import {
   EmbedBuilder,
   GatewayIntentBits,
   type Guild,
+  type GuildMember,
   PermissionFlagsBits,
   type TextChannel,
 } from "discord.js";
@@ -30,6 +31,17 @@ import {
   reconcileChannels,
 } from "./matches.js";
 import type { RankReader } from "./rank.js";
+import {
+  type SidesResponse,
+  activeMatch,
+  backingRoleName,
+  desiredSideAssignments,
+  displayNameToMemberId,
+  fetchSides,
+  isBackingRoleName,
+  reconcileSideRoles,
+  teamColor,
+} from "./sides.js";
 import {
   LADDER_TIERS,
   TIER_STYLE,
@@ -351,6 +363,145 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     }
   }
 
+  // #581 — the market id whose side roles are currently applied, so a switch to
+  // a new "next match" (or no match) clears the prior `Backing *` roles before
+  // applying the new ones. Demo-scoped in-memory, like the link registry.
+  let activeSideMarketId: number | null = null;
+
+  /**
+   * Ensure the two `Backing <Team>` roles for a sides response exist in the
+   * guild (created on demand in deterministic team colours), returning a
+   * name→roleId map for the two. Restyles colour in place if it drifts.
+   */
+  async function ensureSideRoles(g: Guild, sides: SidesResponse): Promise<Map<string, string>> {
+    const byName = new Map<string, string>();
+    await g.roles.fetch();
+    for (const team of [sides.outcome_yes, sides.outcome_no]) {
+      const name = backingRoleName(team);
+      const color = teamColor(team);
+      let role = g.roles.cache.find((r) => r.name === name);
+      if (!role) {
+        role = await g.roles.create({ name, color, reason: "calibre side role (#581)" });
+      } else if (role.color !== color) {
+        role = await role.edit({ color, reason: "calibre side role restyle" });
+      }
+      byName.set(name, role.id);
+    }
+    return byName;
+  }
+
+  /** Strip every managed `Backing *` role from every guild member that holds one. */
+  async function clearAllSideRoles(g: Guild): Promise<void> {
+    await g.roles.fetch();
+    for (const role of g.roles.cache.values()) {
+      if (!isBackingRoleName(role.name)) continue;
+      for (const member of role.members.values()) {
+        try {
+          await member.roles.remove(role.id, "calibre side role cleared (match locked/settled)");
+        } catch {
+          // A single member's failure must not stall the clear.
+        }
+      }
+    }
+  }
+
+  /**
+   * Reconcile the public `Backing <Team>` side roles for the NEXT upcoming
+   * match (#581). Reads calibre's public matches/markets to pick the single
+   * active match, then the service-authed `/sides` for its market, ensures the
+   * two team roles exist, and assigns each LINKED holder their predominant
+   * side — clearing every linked member who is no longer a holder. When the
+   * active match changes (or none qualifies, or the token is unset), all
+   * `Backing *` roles are stripped. Errors are isolated; never stalls the rank
+   * loop. Only one match is active at a time.
+   *
+   * ⚠️ Intentionally public position exposure — owner-approved (#581).
+   */
+  async function reconcileSideRolesPass(): Promise<void> {
+    // Token gates the whole feature (calibre 401s a blank token regardless).
+    if (!config.marketsServiceToken) return;
+
+    let matches: Awaited<ReturnType<typeof fetchUpcomingMatches>>;
+    let markets: Awaited<ReturnType<typeof fetchPublicMarkets>>;
+    try {
+      [matches, markets] = await Promise.all([
+        fetchUpcomingMatches(config.calibreApiBase),
+        fetchPublicMarkets(config.calibreApiBase),
+      ]);
+    } catch (err) {
+      console.error("side-role match fetch failed — skipping this pass", err);
+      return;
+    }
+
+    const g = await guild();
+    const active = activeMatch(matches, markets);
+
+    // No active match → clear any standing side roles and forget the market.
+    if (!active) {
+      if (activeSideMarketId !== null) {
+        await clearAllSideRoles(g);
+        activeSideMarketId = null;
+      }
+      return;
+    }
+
+    // The active match switched → clear the prior match's roles first so only
+    // one match is ever live.
+    if (activeSideMarketId !== null && activeSideMarketId !== active.market.market_id) {
+      await clearAllSideRoles(g);
+    }
+    activeSideMarketId = active.market.market_id;
+
+    let sides: SidesResponse;
+    try {
+      sides = await fetchSides(config.calibreApiBase, active.market.market_id, config.marketsServiceToken);
+    } catch (err) {
+      console.error(`side fetch failed for market ${active.market.market_id} — skipping`, err);
+      return;
+    }
+
+    const roleIdsForTeams = await ensureSideRoles(g, sides);
+    const byDisplayName = displayNameToMemberId(links);
+    const assignments = desiredSideAssignments(sides, byDisplayName);
+    const wantByMember = new Map(assignments.map((a) => [a.memberId, a.roleName]));
+
+    // Reconcile every LINKED member: a holder gets/keeps their side role; a
+    // linked non-holder has any stale side role stripped (they closed out).
+    for (const memberId of links.keys()) {
+      let member: GuildMember;
+      try {
+        member = await g.members.fetch(memberId);
+      } catch {
+        continue; // left the guild / transient
+      }
+      const want = wantByMember.get(memberId) ?? null;
+      const delta = reconcileSideRoles(
+        member.roles.cache.map((r) => r.name),
+        want,
+      );
+      for (const name of delta.add) {
+        const id = roleIdsForTeams.get(name);
+        if (id) {
+          try {
+            await member.roles.add(id, "calibre side role (#581)");
+          } catch {
+            // isolated per member
+          }
+        }
+      }
+      for (const name of delta.remove) {
+        const role = g.roles.cache.find((r) => r.name === name);
+        if (role) {
+          try {
+            await member.roles.remove(role.id, "calibre side role reconcile");
+          } catch {
+            // isolated per member
+          }
+        }
+      }
+    }
+  }
+
   /**
    * Apply a VERIFIED identity from the calibre push (#582): record
    * `memberId -> ensName` in the registry and immediately reconcile that one
@@ -397,6 +548,8 @@ export function createBot(config: BotConfig, ranks: RankReader) {
         // First match-channel reconcile on boot — isolated so a calibre/Discord
         // hiccup here never blocks role setup.
         await reconcileMatchChannels();
+        // First side-role reconcile on boot (#581) — isolated likewise.
+        await reconcileSideRolesPass();
       } catch (err) {
         console.error(
           "setup on ready failed — check the bot's role position (above tiers) + Manage Channels permission",
@@ -409,8 +562,17 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     setInterval(() => {
       void resyncAll();
       void reconcileMatchChannels();
+      void reconcileSideRolesPass();
     }, config.resyncIntervalMs);
   }
 
-  return { client, links, start, resyncAll, reconcileMatchChannels, linkMember };
+  return {
+    client,
+    links,
+    start,
+    resyncAll,
+    reconcileMatchChannels,
+    reconcileSideRolesPass,
+    linkMember,
+  };
 }
