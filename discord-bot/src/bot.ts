@@ -283,7 +283,16 @@ export function createBot(config: BotConfig, ranks: RankReader) {
         name: desired.name,
         type: ChannelType.GuildText,
         parent: parentId,
-        topic: `${desired.match.team1} vs ${desired.match.team2}`,
+        // Matchup + event + stage (e.g. "… · Masters London · Upper Semifinals"),
+        // clamped to Discord's 1024-char topic limit. Empties are dropped.
+        topic: [
+          `${desired.match.team1} vs ${desired.match.team2}`,
+          desired.match.event,
+          desired.match.series,
+        ]
+          .filter((s) => s && s.trim() !== "")
+          .join(" · ")
+          .slice(0, 1024),
         reason: "calibre per-match channel (#580)",
       });
       await upsertPin(channel, pinnedMessageFor(desired.match, desired.market, config.calibreApiBase));
