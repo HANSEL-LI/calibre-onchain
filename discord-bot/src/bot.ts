@@ -52,6 +52,7 @@ import {
   roleNameForTier,
   tierIndex,
 } from "./roles.js";
+import { clanRoleName, reconcileClanRole } from "./clans.js";
 
 /** Tiers that can see the rank-gated lounge channel. */
 const LOUNGE_TIERS = ["Seer", "Oracle"] as const;
@@ -220,6 +221,47 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     }
   }
 
+  // Clan roles are an OPEN set (one per distinct label), so unlike the fixed tier
+  // roles they're created on demand and cached here by role name.
+  const clanRoleIds = new Map<string, string>();
+
+  /** Find-or-create the `clan:<label>` role, returning its id (null if creation
+   *  fails — e.g. Manage Roles missing). Cached after first resolve. */
+  async function ensureClanRole(g: Guild, label: string): Promise<string | null> {
+    const name = clanRoleName(label);
+    const cached = clanRoleIds.get(name);
+    if (cached) return cached;
+    await g.roles.fetch();
+    let role = g.roles.cache.find((rr) => rr.name === name);
+    if (!role) {
+      try {
+        role = await g.roles.create({ name, reason: "calibre clan role" });
+      } catch (err) {
+        console.error(`could not create clan role ${name} — needs Manage Roles`, err);
+        return null;
+      }
+    }
+    clanRoleIds.set(name, role.id);
+    return role.id;
+  }
+
+  /** Reconcile a member's clan role from their `gg.calibre.clan` ENS label.
+   *  Mirrors the rank reconcile but over the dynamic clan-role set. */
+  async function syncClanRole(g: Guild, memberId: string, ensName: string): Promise<void> {
+    const clan = await ranks.clanOf(ensName);
+    const member = await g.members.fetch(memberId);
+    const current = member.roles.cache.map((rr) => rr.name);
+    const delta = reconcileClanRole(current, clan);
+    for (const name of delta.remove) {
+      const role = member.roles.cache.find((rr) => rr.name === name);
+      if (role) await member.roles.remove(role.id, "calibre clan sync");
+    }
+    if (delta.add.length && clan) {
+      const id = await ensureClanRole(g, clan);
+      if (id) await member.roles.add(id, "calibre clan sync");
+    }
+  }
+
   /** Reconcile a member's role and fire a shout-out if their tier crossed upward. */
   async function applyAndAnnounce(
     g: Guild,
@@ -228,6 +270,13 @@ export function createBot(config: BotConfig, ranks: RankReader) {
     ids: Map<string, string>,
   ): Promise<{ tier: string | null }> {
     const r = await syncMember(g, memberId, ensName, ranks, ids);
+    // Clan role is reconciled alongside rank but isolated: a clan-role hiccup
+    // (label edge case, role hierarchy) must never block the rank role.
+    try {
+      await syncClanRole(g, memberId, ensName);
+    } catch (err) {
+      console.error(`clan-role sync failed for ${memberId}`, err);
+    }
     const prev = lastTier.get(memberId);
     lastTier.set(memberId, r.tier);
     // Only announce a genuine increase from a previously-known tier (never on the

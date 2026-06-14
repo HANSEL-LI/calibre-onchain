@@ -9,9 +9,11 @@
  * calibre-API calls**. The only egress is the JSON-RPC endpoint and whatever
  * CCIP gateway the resolver points it at.
  *
- * Privacy: the bot reads ONLY the rank record. It never requests
- * `gg.calibre.roi`, `gg.calibre.brier`, or any position/P&L data — those are
- * not rank, and roles must not leak trading activity.
+ * Privacy: for ROLE derivation the bot reads only the rank record and the
+ * `gg.calibre.clan` *label* (a public team name, like the side you back — not
+ * trading data). It never derives roles from `gg.calibre.roi` /
+ * `gg.calibre.brier` / any position or P&L data, so a member's roles reveal
+ * their rank + clan and nothing about their trading activity.
  */
 import { createPublicClient, http } from "viem";
 import { mainnet } from "viem/chains";
@@ -22,6 +24,9 @@ import { normalize } from "viem/ens";
 export const RANK_TEXT_KEY = "gg.calibre.rank" as const;
 export const ROI_TEXT_KEY = "gg.calibre.roi" as const;
 export const BRIER_TEXT_KEY = "gg.calibre.brier" as const;
+// A user's clan *label* (public team name). Read for clan-role derivation only;
+// the clan-aggregate `gg.calibre.clan.*` records (size/roi/…) are NOT read here.
+export const CLAN_TEXT_KEY = "gg.calibre.clan" as const;
 
 /**
  * The fields shown in the ephemeral `/link` card. ROI + Brier are read ONLY for
@@ -76,6 +81,11 @@ export interface RankReader {
    */
   rankOf(name: string): Promise<string | null>;
   /**
+   * Resolve `name`'s `gg.calibre.clan` text record (the member's clan label), or
+   * null if the name is unaccepted / unset / unresolvable. Drives the clan role.
+   */
+  clanOf(name: string): Promise<string | null>;
+  /**
    * Read the public profile card (rank + roi + brier) for an accepted name, for
    * the ephemeral `/link` reply. Returns null only for an unaccepted name; an
    * accepted name with no records resolves every field to null. See
@@ -120,6 +130,13 @@ export function createRankReader(
       const value = await client.getEnsText({ name: normalized, key: RANK_TEXT_KEY });
       if (value === null || value === undefined || value === "") return null;
       return value;
+    },
+    async clanOf(name: string): Promise<string | null> {
+      if (!isAcceptedName(name, parent)) return null;
+      const normalized = normalize(name);
+      const value = await client.getEnsText({ name: normalized, key: CLAN_TEXT_KEY });
+      if (value === null || value === undefined || value.trim() === "") return null;
+      return value.trim();
     },
     async cardOf(name: string): Promise<ProfileCard | null> {
       if (!isAcceptedName(name, parent)) return null;
