@@ -1,10 +1,13 @@
 {
   "text_keys": [
+    "avatar",
     "com.discord",
+    "description",
     "gg.calibre.brier",
     "gg.calibre.clan",
     "gg.calibre.rank",
     "gg.calibre.riot",
-    "gg.calibre.roi"
+    "gg.calibre.roi",
+    "url"
   ]
 }
