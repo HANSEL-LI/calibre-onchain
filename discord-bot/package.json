@@ -2,7 +2,7 @@
   "name": "@calibre-onchain/discord-bot",
   "version": "0.1.0",
   "private": true,
-  "description": "Discord bot: resolve members' calibre.eth subnames -> read gg.calibre.rank over ENS -> assign the matching Discord role (W6.4); plus auto-create one channel per upcoming match from calibre's public match/market API (#580). Ranks from ENS only.",
+  "description": "Discord bot: ingest calibre's signed (discord_id -> display_name) identity push (#582, no user /link), resolve the <name>.<parent> subname's gg.calibre.rank over ENS, assign the matching role (W6.4); plus auto-create one channel per upcoming match from calibre's public match/market API (#580). Reads RANK from ENS only (never pulls calibre); identity via verified push.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
