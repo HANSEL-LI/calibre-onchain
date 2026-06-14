@@ -17,10 +17,13 @@ from .keys import (
     DESCRIPTION_KEY,
     DISCORD_KEY,
     RANK_KEY,
+    RESOLVED_KEY,
     RIOT_KEY,
     ROI_KEY,
+    STREAK_KEY,
     TEXT_KEYS,
     URL_KEY,
+    WIN_RATE_KEY,
 )
 from .tiers import all_tiers, tier_for_percentile
 
@@ -35,6 +38,9 @@ __all__ = [
     "ROI_KEY",
     "CLAN_KEY",
     "RIOT_KEY",
+    "WIN_RATE_KEY",
+    "RESOLVED_KEY",
+    "STREAK_KEY",
     "DISCORD_KEY",
     "AVATAR_KEY",
     "URL_KEY",

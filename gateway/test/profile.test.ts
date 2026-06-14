@@ -17,6 +17,9 @@ const USER: PublicProfile = {
   brier_skill: 0.42,
   roi: 1.5,
   pnl: 12345,
+  win_rate: 0.6,
+  n_resolved: 5,
+  streak: 2,
   wallet_address: "0xabc",
   discord_handle: "demo#1234",
   riot_id: "Demo#NA1",
@@ -37,6 +40,27 @@ test("a null ENS-standard value resolves to the empty (unset) record", () => {
   assert.equal(textRecord(blank, "avatar"), "");
   assert.equal(textRecord(blank, "url"), "");
   assert.equal(textRecord(blank, "description"), "");
+});
+
+// ── Forecasting-track stats: winrate / resolved / streak (#597) ──
+
+test("forecasting stats map to gg.calibre.winrate/resolved/streak", () => {
+  assert.equal(textRecord(USER, "gg.calibre.winrate"), "0.6");
+  // n_resolved/streak are integers — rendered without a decimal point.
+  assert.equal(textRecord(USER, "gg.calibre.resolved"), "5");
+  assert.equal(textRecord(USER, "gg.calibre.streak"), "2");
+});
+
+test("a negative streak stringifies with its sign", () => {
+  const losing: PublicProfile = { ...USER, streak: -3 };
+  assert.equal(textRecord(losing, "gg.calibre.streak"), "-3");
+});
+
+test("null forecasting stats resolve to the empty (unset) record", () => {
+  const blank: PublicProfile = { ...USER, win_rate: null, n_resolved: null, streak: null };
+  assert.equal(textRecord(blank, "gg.calibre.winrate"), "");
+  assert.equal(textRecord(blank, "gg.calibre.resolved"), "");
+  assert.equal(textRecord(blank, "gg.calibre.streak"), "");
 });
 
 const CLAN: ClanProfile = {

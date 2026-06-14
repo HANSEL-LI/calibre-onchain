@@ -55,6 +55,9 @@ ENS-standard global key (reused so generic clients recognise it).
 | `ROI_KEY` | `gg.calibre.roi` | net / lifetime-deployed |
 | `CLAN_KEY` | `gg.calibre.clan` | clan slug (the `<clan>` in `<user>.<clan>.calibre.eth`) |
 | `RIOT_KEY` | `gg.calibre.riot` | Riot ID (RSO-verified where available) |
+| `WIN_RATE_KEY` | `gg.calibre.winrate` | wins / settled markets (ratio) |
+| `RESOLVED_KEY` | `gg.calibre.resolved` | count of resolved (non-void) markets traded |
+| `STREAK_KEY` | `gg.calibre.streak` | signed current run (+wins / −losses), most-recent-first |
 | `DISCORD_KEY` | `com.discord` | Discord handle (OAuth-verified) |
 
 ```python

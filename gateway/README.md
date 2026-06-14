@@ -66,7 +66,7 @@ committed `ranking/keys.json` fixture, and `test/keys-schema.test.ts` (in the
 A key added/renamed on either side fails the build (#445).
 
 The profile API returns
-`{ display_name, tier, brier_skill, roi, pnl, wallet_address, discord_handle, riot_id, clan }`.
+`{ display_name, tier, brier_skill, roi, pnl, win_rate, n_resolved, streak, wallet_address, discord_handle, riot_id, clan, avatar, url, description }`.
 
 | ENS query | Source field |
 |---|---|
@@ -74,6 +74,9 @@ The profile API returns
 | `text(node, "gg.calibre.rank")` | `tier` |
 | `text(node, "gg.calibre.brier")` | `brier_skill` |
 | `text(node, "gg.calibre.roi")` | `roi` |
+| `text(node, "gg.calibre.winrate")` | `win_rate` (#597) |
+| `text(node, "gg.calibre.resolved")` | `n_resolved` (#597) |
+| `text(node, "gg.calibre.streak")` | `streak` (#597) |
 | `text(node, "com.discord")` | `discord_handle` |
 | `text(node, "gg.calibre.riot")` | `riot_id` |
 | `text(node, "gg.calibre.clan")` | `clan` |

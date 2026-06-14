@@ -18,6 +18,11 @@ BRIER_KEY = "gg.calibre.brier"  # Brier skill score, 1 - brier_avg/0.25 (>0 beat
 ROI_KEY = "gg.calibre.roi"  # net / lifetime-deployed
 CLAN_KEY = "gg.calibre.clan"  # clan slug (the <clan> label in <user>.<clan>.calibre.eth)
 RIOT_KEY = "gg.calibre.riot"  # Riot ID (RSO-verified where available)
+# Forecasting-track stats (#597), derived calibre-side from the user's settled
+# (resolved non-void) markets — the same set the app's win-rate summary uses.
+WIN_RATE_KEY = "gg.calibre.winrate"  # wins / settled markets (ratio); unset until a market resolves
+RESOLVED_KEY = "gg.calibre.resolved"  # count of resolved (non-void) markets traded; unset if 0
+STREAK_KEY = "gg.calibre.streak"  # signed current run, +wins/-losses, most-recent-first; unset if none
 
 # ENS-standard global keys (not re-namespaced) so generic clients recognise them.
 DISCORD_KEY = "com.discord"  # Discord handle (OAuth-verified)
@@ -37,6 +42,9 @@ TEXT_KEYS: frozenset[str] = frozenset(
         ROI_KEY,
         CLAN_KEY,
         RIOT_KEY,
+        WIN_RATE_KEY,
+        RESOLVED_KEY,
+        STREAK_KEY,
         DISCORD_KEY,
         AVATAR_KEY,
         URL_KEY,

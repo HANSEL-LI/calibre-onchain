@@ -8,10 +8,13 @@ from calibre_ranking import (
     DESCRIPTION_KEY,
     DISCORD_KEY,
     RANK_KEY,
+    RESOLVED_KEY,
     RIOT_KEY,
     ROI_KEY,
+    STREAK_KEY,
     TEXT_KEYS,
     URL_KEY,
+    WIN_RATE_KEY,
 )
 
 # ENS-standard global record keys (not re-namespaced) — generic ENS clients
@@ -25,6 +28,9 @@ def test_named_constants_have_the_expected_keys() -> None:
     assert ROI_KEY == "gg.calibre.roi"
     assert CLAN_KEY == "gg.calibre.clan"
     assert RIOT_KEY == "gg.calibre.riot"
+    assert WIN_RATE_KEY == "gg.calibre.winrate"
+    assert RESOLVED_KEY == "gg.calibre.resolved"
+    assert STREAK_KEY == "gg.calibre.streak"
     assert DISCORD_KEY == "com.discord"
     assert AVATAR_KEY == "avatar"
     assert URL_KEY == "url"
@@ -39,6 +45,9 @@ def test_text_keys_is_exactly_the_named_constants() -> None:
             ROI_KEY,
             CLAN_KEY,
             RIOT_KEY,
+            WIN_RATE_KEY,
+            RESOLVED_KEY,
+            STREAK_KEY,
             DISCORD_KEY,
             AVATAR_KEY,
             URL_KEY,
