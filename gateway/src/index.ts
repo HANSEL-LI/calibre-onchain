@@ -15,7 +15,7 @@
 import express, { type Request, type Response } from "express";
 import { type Address, type Hex, getAddress, isHex } from "viem";
 import { type GatewayConfig, loadConfig } from "./config.js";
-import { createProfileClient } from "./profile.js";
+import { createClanClient, createProfileClient } from "./profile.js";
 import { handleResolve } from "./resolver.js";
 import { signResult } from "./signing.js";
 
@@ -24,6 +24,7 @@ export function createApp(config: GatewayConfig) {
   app.use(express.json({ limit: "32kb" }));
 
   const profiles = createProfileClient(config.apiBase);
+  const clans = createClanClient(config.apiBase);
 
   app.get("/health", (_req: Request, res: Response) => {
     res.json({ ok: true, resolver: config.resolverAddress, apiBase: config.apiBase });
@@ -41,7 +42,7 @@ export function createApp(config: GatewayConfig) {
         return;
       }
       const target: Address = getAddress(sender);
-      const { result } = await handleResolve(data as Hex, profiles);
+      const { result } = await handleResolve(data as Hex, profiles, clans);
       const signed = await signResult(config.signerKey, target, data as Hex, result);
       res.json({ data: signed.data });
     } catch (err) {
