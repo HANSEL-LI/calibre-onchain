@@ -192,7 +192,16 @@ export async function fetchUpcomingMatches(apiBase: string): Promise<UpcomingMat
   return Array.isArray(data) ? data : [];
 }
 
-/** Fetch the public open-markets listing. Throws on a non-2xx. */
+/**
+ * Fetch the public open-markets listing. Throws on a non-2xx.
+ *
+ * NOTE: the upstream `GET /api/v1/markets/public/markets` is hard-capped at 12
+ * results (the soonest-to-lock open markets). A match whose market isn't in
+ * that window won't join here, so `matchMarket` returns null and the channel's
+ * pin falls back to "no open market yet" — the channel is still created. To
+ * resolve odds for more than 12 concurrent matches, the public endpoint must be
+ * widened (or expose `match_id` for a precise join) — tracked calibre-side.
+ */
 export async function fetchPublicMarkets(apiBase: string): Promise<PublicMarket[]> {
   const res = await fetch(`${apiBase}/api/v1/markets/public/markets`);
   if (!res.ok) throw new Error(`markets/public/markets ${res.status}`);

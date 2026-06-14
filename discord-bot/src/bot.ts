@@ -310,6 +310,10 @@ export function createBot(config: BotConfig, ranks: RankReader) {
    * channel per upcoming match (idempotent by deterministic name), refresh each
    * pin, and archive channels whose match has left the upcoming window. All
    * reads are public, no-auth. Errors are isolated so the role loop is unaffected.
+   *
+   * Managed = a bot-named (`-vs-…-<6hex>`) text channel under the active
+   * category; only those are ever archived. Don't manually create a same-shaped
+   * channel in the managed category — the bot would treat it as its own.
    */
   async function reconcileMatchChannels(): Promise<void> {
     let matches: Awaited<ReturnType<typeof fetchUpcomingMatches>>;
