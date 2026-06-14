@@ -83,18 +83,46 @@ test("oddsLine renders both sides from micro-cents", () => {
   assert.equal(oddsLine(MARKETS[0]), "NRG 62% · Sentinels 38%");
 });
 
-test("pinnedMessageFor with a market carries odds + the markets link", () => {
+const reLink = (s: string) => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+
+test("pinnedMessageFor with a market carries odds + a match deep link", () => {
   const msg = pinnedMessageFor(mk("1", "NRG", "Sentinels", { event: "VCT" }), MARKETS[0], API);
   assert.match(msg, /NRG vs Sentinels/);
   assert.match(msg, /VCT/);
   assert.match(msg, /62%/);
-  assert.match(msg, new RegExp(`${API}/#markets`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  // Deep-links the match page, not the generic markets list.
+  assert.match(msg, reLink(`${API}/#matches/1`));
+  assert.doesNotMatch(msg, /#markets\b/);
 });
 
-test("pinnedMessageFor with no market says not open yet", () => {
+test("pinnedMessageFor with no market says not open yet, still deep-links", () => {
   const msg = pinnedMessageFor(mk("9", "EG", "C9"), null, API);
   assert.match(msg, /No open market yet/);
-  assert.match(msg, /#markets/);
+  assert.match(msg, reLink(`${API}/#matches/9`));
+});
+
+test("pinnedMessageFor surfaces event · stage and date · time when present", () => {
+  const msg = pinnedMessageFor(
+    mk("670473", "LEVIATÁN", "Team Heretics", {
+      event: "Valorant Masters London 2026",
+      series: "Playoffs–Lower Round 1",
+      date_group: "Sun, June 14, 2026",
+      time: "4:00 PM",
+    }),
+    MARKETS[0],
+    API,
+  );
+  assert.match(msg, /Valorant Masters London 2026 · Playoffs–Lower Round 1/);
+  assert.match(msg, /Sun, June 14, 2026 · 4:00 PM/);
+  assert.match(msg, reLink(`${API}/#matches/670473`));
+});
+
+test("pinnedMessageFor omits context lines a demo match lacks (no stray separators)", () => {
+  const msg = pinnedMessageFor(mk("demo-replay-edg-fut-c1", "EDward Gaming", "FUT Esports"), null, API);
+  assert.match(msg, /EDward Gaming vs FUT Esports/);
+  assert.match(msg, reLink(`${API}/#matches/demo-replay-edg-fut-c1`));
+  // No empty "· ·" / leading "· " from missing event/series/date/time.
+  assert.doesNotMatch(msg, /· ·|\n ·|· \n/);
 });
 
 test("desiredChannels skips non-upcoming and team-less matches", () => {

@@ -17,11 +17,17 @@
 
 /** One upcoming match from `GET /api/v1/matches/upcoming` (public). */
 export interface UpcomingMatch {
-  /** VLR match id — stable, the deterministic-name seed. */
+  /** VLR match id — stable, the deterministic-name seed + `#matches/<id>` deep link. */
   match_id: string;
   team1: string;
   team2: string;
   event?: string;
+  /** Bracket / stage, e.g. "Playoffs–Lower Round 1" / "Upper Semifinals". */
+  series?: string;
+  /** Local kickoff clock, e.g. "4:00 PM". */
+  time?: string;
+  /** Human date, e.g. "Sun, June 14, 2026". */
+  date_group?: string;
   status?: string;
 }
 
@@ -114,21 +120,28 @@ export function oddsLine(market: PublicMarket): string {
 }
 
 /**
- * The pinned-message text: the market link + current odds, or a "not open yet"
- * note. `apiBase` is the calibre base (no trailing slash); the SPA has no
- * per-market deep-link route, so we link the markets page. Pure.
+ * The pinned-message text: matchup + context (event · stage · date/time) +
+ * current odds + a **deep link to the match page** (`#matches/<match_id>` — the
+ * SPA route that opens the odds chart + trade panel, not the generic markets
+ * list). Context lines are omitted when calibre doesn't supply them (e.g. demo
+ * replays carry no stage/time). `apiBase` is the calibre base (no trailing
+ * slash). Pure.
  */
 export function pinnedMessageFor(
   match: UpcomingMatch,
   market: PublicMarket | null,
   apiBase: string,
 ): string {
-  const header = `**${match.team1} vs ${match.team2}**${match.event ? ` — ${match.event}` : ""}`;
-  const link = `${apiBase}/#markets`;
-  if (!market) {
-    return `${header}\nNo open market yet. Markets: ${link}`;
-  }
-  return `${header}\nCurrent odds: ${oddsLine(market)}\nTrade on calibre: ${link}`;
+  const link = `${apiBase}/#matches/${encodeURIComponent(match.match_id)}`;
+  const present = (s?: string): s is string => !!s && s.trim() !== "";
+  const lines = [`**${match.team1} vs ${match.team2}**`];
+  const stage = [match.event, match.series].filter(present).join(" · ");
+  if (stage) lines.push(stage);
+  const when = [match.date_group, match.time].filter(present).join(" · ");
+  if (when) lines.push(when);
+  lines.push(market ? `Current odds: ${oddsLine(market)}` : "No open market yet.");
+  lines.push(`Trade on calibre: ${link}`);
+  return lines.join("\n");
 }
 
 /** The desired per-match channel set for a reconcile pass. */
