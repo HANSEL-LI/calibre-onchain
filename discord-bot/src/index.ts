@@ -3,9 +3,14 @@
  *
  * Resolves guild members' `<name>.calibre.eth` subnames, reads the
  * `gg.calibre.rank` text record FROM ENS (via a standard viem client following
- * CCIP-read to the W6.2 gateway), and assigns the matching Discord role. Reads
- * ENS only — it never calls calibre, and never reads anything but the rank
- * record, so roles reveal rank and nothing about open positions.
+ * CCIP-read to the W6.2 gateway), and assigns the matching Discord role. Ranks
+ * come from ENS only — never anything but the rank record, so roles reveal rank
+ * and nothing about open positions.
+ *
+ * As of #580 it also reads calibre's PUBLIC match/market data over HTTP to
+ * auto-create one channel per upcoming match. That read is public, no-auth — no
+ * calibre session, no private surface. Ranks stay ENS-sourced; calibre is the
+ * match-data source.
  */
 import { createBot } from "./bot.js";
 import { loadConfig } from "./config.js";
