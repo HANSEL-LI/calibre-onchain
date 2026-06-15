@@ -27,11 +27,24 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # 22 (LTS): `node --test` expands glob patterns like "test/**/*.test.ts"
+          # itself (support landed in Node 21). On Node 20 the glob reached the
+          # runner unexpanded — npm runs scripts via sh, which leaves the quoted
+          # pattern literal — and `node --test` errored "Could not find ...".
+          node-version: "22"
 
       - name: npm install
         working-directory: ${{ matrix.package }}
         run: npm install
+
+      # parity typechecks against discord-bot/gateway sources (../*/src/*.ts),
+      # which import viem. tsc resolves those imports from the sibling package's
+      # own node_modules, so the parity job must install their deps too.
+      - name: install sibling deps (parity)
+        if: matrix.package == 'parity'
+        run: |
+          npm install --prefix discord-bot
+          npm install --prefix gateway
 
       - name: npm test
         working-directory: ${{ matrix.package }}
