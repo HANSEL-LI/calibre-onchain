@@ -2,7 +2,7 @@
   "name": "@calibre-onchain/gateway",
   "version": "0.1.0",
   "private": true,
-  "description": "ENS CCIP-read (ENSIP-10 / EIP-3668) resolver gateway for *.calibre.eth — serves addr() + text() from the calibre public profile API (Seam 2). W6.2.",
+  "description": "ENS CCIP-read (ENSIP-10 / EIP-3668) resolver gateway for *.hicalibre.eth — serves addr() + text() from the calibre public profile API (Seam 2). W6.2.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

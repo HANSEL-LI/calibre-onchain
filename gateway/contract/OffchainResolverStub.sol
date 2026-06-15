@@ -2,11 +2,11 @@
 pragma solidity ^0.8.19;
 
 /**
- * @title OffchainResolverStub — reference on-chain side for the calibre.eth gateway
+ * @title OffchainResolverStub — reference on-chain side for the hicalibre.eth gateway
  *
  * Reference artifact (W6.2, HANSEL-LI/Calibre#429). The ENS booth designates the
  * real resolver / testnet at the event; this stub makes the gateway's signature
- * scheme self-documenting and lets a real `calibre.eth` (or testnet equivalent)
+ * scheme self-documenting and lets a real `hicalibre.eth` (or testnet equivalent)
  * point its offchain resolver at the gateway URL. It mirrors
  * `ensdomains/offchain-resolver` so any compliant ENS client interoperates.
  *
@@ -49,7 +49,7 @@ contract OffchainResolverStub is IExtendedResolver {
     /// nearest ancestor resolver and only performs ENSIP-10 wildcard resolution
     /// when it returns true for `IExtendedResolver` (0x9061b923). Without this a
     /// standards-compliant client (viem `getEnsAddress`, the UR) reverts with
-    /// `ResolverNotFound` for every `<name>.calibre.eth` subname even though
+    /// `ResolverNotFound` for every `<name>.hicalibre.eth` subname even though
     /// `resolve()` is implemented — so it is mandatory, not cosmetic.
     function supportsInterface(bytes4 interfaceID) external pure returns (bool) {
         return interfaceID == 0x01ffc9a7 // ERC-165 itself

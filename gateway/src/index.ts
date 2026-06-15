@@ -1,5 +1,5 @@
 /**
- * ENS CCIP-read (ENSIP-10 / EIP-3668) resolver gateway for `*.calibre.eth`.
+ * ENS CCIP-read (ENSIP-10 / EIP-3668) resolver gateway for `*.hicalibre.eth`.
  *
  * Serves `addr()` + `text()` records by reading calibre's public profile API
  * (Seam 2). It never touches the database — its sole data source is HTTP.

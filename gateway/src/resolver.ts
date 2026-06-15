@@ -3,7 +3,7 @@
  *
  * The on-chain wildcard resolver reverts `OffchainLookup` with calldata that is
  * an ABI-encoded `IExtendedResolver.resolve(bytes name, bytes data)` call:
- *   - `name` is the DNS-wire-encoded ENS name (e.g. demo.calibre.eth)
+ *   - `name` is the DNS-wire-encoded ENS name (e.g. demo.hicalibre.eth)
  *   - `data` is the inner resolver call the client actually wants:
  *       addr(bytes32 node)            0x3b3b57de
  *       addr(bytes32 node, uint256)   0xf1cb7e06  (coinType; we serve 60 = ETH)
@@ -68,21 +68,21 @@ export function decodeDnsName(encoded: Hex): string {
 /**
  * The calibre display_name a subname resolves to: always the **leftmost** label.
  *
- *   demo.calibre.eth          → "demo"   (flat user subname)
- *   demo.sharks.calibre.eth   → "demo"   (clan-nested, W6.3 / overview F4)
+ *   demo.hicalibre.eth          → "demo"   (flat user subname)
+ *   demo.sharks.hicalibre.eth   → "demo"   (clan-nested, W6.3 / overview F4)
  *
- * Clan nesting (`<user>.<clan>.calibre.eth`) is an addressing convenience: the
+ * Clan nesting (`<user>.<clan>.hicalibre.eth`) is an addressing convenience: the
  * `<clan>` label is namespacing, not a second DB lookup, so a nested name
  * resolves the *user* leaf exactly as the flat form does. A bare 3-label name
- * (`sharks.calibre.eth`) is **ambiguous** — it is the user-lookup candidate here
+ * (`sharks.hicalibre.eth`) is **ambiguous** — it is the user-lookup candidate here
  * AND a possible clan (see `bareClanLabelFor`); `handleResolve` tries the user
  * first so a real user always resolves as a user (#583).
  *
- * Returns null for the bare parent (`calibre.eth`) — nothing to resolve.
+ * Returns null for the bare parent (`hicalibre.eth`) — nothing to resolve.
  */
 export function displayNameFor(name: string): string | null {
   const labels = name.split(".").filter((l) => l.length > 0);
-  if (labels.length <= 2) return null; // bare "calibre.eth" or shorter
+  if (labels.length <= 2) return null; // bare "hicalibre.eth" or shorter
   return labels[0];
 }
 
@@ -91,7 +91,7 @@ export function displayNameFor(name: string): string | null {
  *
  * Only a bare single-label clan name — exactly `<clan>.<parent>.<tld>` (3 labels,
  * e.g. `sharks.hicalibre.eth`) — is a clan candidate. A nested
- * `<user>.<clan>.calibre.eth` (≥4 labels) is always a user leaf (the `<clan>` is
+ * `<user>.<clan>.hicalibre.eth` (≥4 labels) is always a user leaf (the `<clan>` is
  * namespacing, not a lookup), and the bare parent (≤2 labels) is nothing. The
  * clan candidate is the SAME leftmost label `displayNameFor` returns for a
  * 3-label name, so the two coincide exactly where disambiguation is needed;
