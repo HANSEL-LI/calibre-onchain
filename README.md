@@ -38,7 +38,7 @@ mint / resolve / redeem with calibre as the standing EIP-712 counterparty.
 | Package | Contents | Language |
 |---|---|---|
 | [`contracts/`](contracts/) | `CalibreMarket.sol` — complete-set mint / trade-transfer / resolve / redeem in USDC; deploy scripts; tests | Solidity (Foundry) |
-| [`gateway/`](gateway/) | ENS CCIP-read (ENSIP-10) resolver gateway for `*.calibre.eth` — serves `addr()` + `text()` from the calibre public profile API, incl. clan-nested `<user>.<clan>.calibre.eth` | TypeScript |
+| [`gateway/`](gateway/) | ENS CCIP-read (ENSIP-10) resolver gateway for `*.hicalibre.eth` — serves `addr()` + `text()` from the calibre public profile API, incl. clan-nested `<user>.<clan>.hicalibre.eth` | TypeScript |
 | [`discord-bot/`](discord-bot/) | Role-sync bot: resolve members' subnames → read `gg.calibre.rank` → assign Discord role | TypeScript |
 | [`ranking/`](ranking/) | Pure rank-bucketing lib (skill percentile → tier, the F5 `Static…Oracle` ladder) + the canonical `gg.calibre.*` text-record key schema | Python |
 | [`agent/`](agent/) | Standalone on-chain market-maker agent: Dynamic server wallet + calibre public price feed as its prior, quoting on the Arc contract | Python |

@@ -206,14 +206,14 @@ scheme (booth) + live BLINK_API_KEY/BLINK_WEBHOOK_SECRET; demo deposit]`.
 ## ENS — Best ENS Continuity Integration ($4,000)
 
 **What we built.** A portable forecasting-reputation layer over ENS. Users claim
-`<name>.calibre.eth`; their live rank, Brier skill, and ROI are served as ENS
+`<name>.hicalibre.eth`; their live rank, Brier skill, and ROI are served as ENS
 text records sourced from calibre's DB via an **offchain (CCIP-read) resolver** —
 so a value that changes on every market resolution stays free and instant to
 update, yet resolvable by any ENS-aware client.
 
 **How the integration works.**
 - **Offchain resolver gateway (ENSIP-10 / EIP-3668):** `gateway/` serves
-  `addr()` + `text()` for `*.calibre.eth`, signing CCIP-read answers per
+  `addr()` + `text()` for `*.hicalibre.eth`, signing CCIP-read answers per
   `ensdomains/offchain-resolver`. Its sole data source is the public profile API
   (Seam 2) — no DB, no private data; a non-opted-in / unknown name returns the
   *empty* record (no enumeration oracle).
@@ -231,7 +231,7 @@ W6.3/#430), `ranking/` (#8, #11), `gateway/contract/OffchainResolverStub.sol`
 (calibre PR #439, W6.1/#419).
 
 🔌 `[OWNER-FILL: deployed offchain resolver address + GATEWAY_RESOLVER_ADDRESS;
-the booth-designated parent name (calibre.eth or the testnet equivalent) pointed
+the booth-designated parent name (hicalibre.eth or the testnet equivalent) pointed
 at the gateway]`.
 
 ---
@@ -240,13 +240,13 @@ at the gateway]`.
 
 **What we built.** Three things that make ENS *load-bearing*, not decorative:
 
-1. **Clans as nested subname registries** — `<user>.<clan>.calibre.eth`. The
+1. **Clans as nested subname registries** — `<user>.<clan>.hicalibre.eth`. The
    `<clan>` label is addressing/namespacing that resolves the user leaf; the
    structure expresses team membership in the name itself.
 2. **CCIP-read reputation** — rank/skill/ROI as live ENS text records backed by an
    offchain resolver, so a constantly-changing forecasting reputation is portable
    over ENS without per-update gas.
-3. **Roles-from-ENS** — a Discord bot resolves members' `<name>.calibre.eth`,
+3. **Roles-from-ENS** — a Discord bot resolves members' `<name>.hicalibre.eth`,
    reads `gg.calibre.rank` with a **standard ENS library** (viem `getEnsText`,
    zero calibre-API calls), and assigns the matching Discord role. ENS is the
    credential layer *between* calibre and Discord — the closing demo beat:

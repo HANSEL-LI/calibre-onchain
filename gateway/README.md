@@ -1,7 +1,7 @@
-# gateway — ENS CCIP-read resolver for `*.calibre.eth`
+# gateway — ENS CCIP-read resolver for `*.hicalibre.eth`
 
 An ENSIP-10 / EIP-3668 **offchain resolver gateway**. A standard ENS client
-(viem/ethers) resolving `<name>.calibre.eth` hits the on-chain resolver, follows
+(viem/ethers) resolving `<name>.hicalibre.eth` hits the on-chain resolver, follows
 its `OffchainLookup` to this gateway, and gets back a **signed** answer for the
 name's `addr()` and `gg.calibre.*` / `com.discord` text records.
 
@@ -13,7 +13,7 @@ ENS-aware client. (W6.2 — `HANSEL-LI/Calibre#429`.)
 ## How it works
 
 ```
-ENS client ──resolve()──► calibre.eth resolver (on-chain)
+ENS client ──resolve()──► hicalibre.eth resolver (on-chain)
                                 │ reverts OffchainLookup([gatewayUrl], …)
 client ──POST {sender,data}──►  gateway
 gateway ──GET /profiles/{name}──► calibre public API ──► record value
@@ -35,12 +35,12 @@ sig over keccak256(abi.encodePacked(
 
 | Name | Resolves to |
 |---|---|
-| `demo.calibre.eth` | the `demo` user profile (flat subname) |
-| `demo.sharks.calibre.eth` | the `demo` user profile (clan-nested, W6.3 / F4) |
-| `sharks.calibre.eth` | the `sharks` user if one exists, else the `sharks` **clan-aggregate** profile (#583) |
-| `calibre.eth` | nothing (bare parent) |
+| `demo.hicalibre.eth` | the `demo` user profile (flat subname) |
+| `demo.sharks.hicalibre.eth` | the `demo` user profile (clan-nested, W6.3 / F4) |
+| `sharks.hicalibre.eth` | the `sharks` user if one exists, else the `sharks` **clan-aggregate** profile (#583) |
+| `hicalibre.eth` | nothing (bare parent) |
 
-Clan nesting (`<user>.<clan>.calibre.eth`) is an **addressing convenience**: the
+Clan nesting (`<user>.<clan>.hicalibre.eth`) is an **addressing convenience**: the
 `<clan>` label is namespacing, so the leftmost label is always the calibre
 `display_name` and a nested name resolves the same user as the flat form.
 
@@ -132,7 +132,7 @@ Environment (see the repo-root `.env.example`):
 [`contract/OffchainResolverStub.sol`](contract/OffchainResolverStub.sol) is the
 reference resolver documenting the signature scheme (`resolve` →
 `OffchainLookup` → `resolveWithProof` verifies an allowlisted signer). It is a
-reference artifact — deploying it and pointing a real `calibre.eth` (or the
+reference artifact — deploying it and pointing a real `hicalibre.eth` (or the
 testnet equivalent the ENS booth designates) at the gateway URL is a demo-day
 op, gated on `GATEWAY_RESOLVER_ADDRESS`.
 

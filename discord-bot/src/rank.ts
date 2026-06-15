@@ -2,7 +2,7 @@
  * Read a member's calibre rank FROM ENS.
  *
  * This is the load-bearing "roles-from-ENS" leg: the bot resolves a
- * `<name>.calibre.eth` name's `gg.calibre.rank` text record using a STANDARD
+ * `<name>.hicalibre.eth` name's `gg.calibre.rank` text record using a STANDARD
  * ENS client (viem). viem follows ENSIP-10 wildcard resolution and the
  * EIP-3668 CCIP-read `OffchainLookup` revert transparently to the W6.2 gateway
  * — so the bot reads ENS exactly like any third party would, with **zero

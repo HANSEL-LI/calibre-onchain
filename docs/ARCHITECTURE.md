@@ -164,7 +164,7 @@ sequenceDiagram
   SET->>CAL: recompute recency-decayed Brier skill
   CAL->>RANK: percentile → tier_for_percentile()
   Note over RANK,API: tier = "Sharp" written to gg.calibre.rank
-  BOT->>GW: resolve <user>.calibre.eth text("gg.calibre.rank")
+  BOT->>GW: resolve <user>.hicalibre.eth text("gg.calibre.rank")
   GW->>API: GET /profiles/{user} (opted-in human)
   API-->>GW: { tier: "Sharp", ... }
   GW-->>BOT: signed CCIP-read answer "Sharp"

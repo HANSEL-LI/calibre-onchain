@@ -105,7 +105,7 @@ The single continuous motion. Keep the Discord window visible the whole time.
    calls `resolve(marketId, YES)` on Arc → show the resolve tx + the user
    redeeming winning shares for USDC.
 3. Rank recomputes (recency-decayed Brier → percentile → tier, e.g. **"Sharp"**).
-4. Resolve `<user>.calibre.eth` `text("gg.calibre.rank")` in an ENS-aware client →
+4. Resolve `<user>.hicalibre.eth` `text("gg.calibre.rank")` in an ENS-aware client →
    it returns the **new** tier (via the CCIP-read gateway — no on-chain write).
 5. **Cut to Discord:** the role-sync bot reads `gg.calibre.rank` from ENS and the
    user's role **visibly flips** to the new tier.

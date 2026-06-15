@@ -53,7 +53,7 @@ ENS-standard global key (reused so generic clients recognise it).
 | `RANK_KEY` | `gg.calibre.rank` | named tier from `tier_for_percentile` |
 | `BRIER_KEY` | `gg.calibre.brier` | Brier skill score (`1 − brier_avg/0.25`) |
 | `ROI_KEY` | `gg.calibre.roi` | net / lifetime-deployed |
-| `CLAN_KEY` | `gg.calibre.clan` | clan slug (the `<clan>` in `<user>.<clan>.calibre.eth`) |
+| `CLAN_KEY` | `gg.calibre.clan` | clan slug (the `<clan>` in `<user>.<clan>.hicalibre.eth`) |
 | `RIOT_KEY` | `gg.calibre.riot` | Riot ID (RSO-verified where available) |
 | `WIN_RATE_KEY` | `gg.calibre.winrate` | wins / settled markets (ratio) |
 | `RESOLVED_KEY` | `gg.calibre.resolved` | count of resolved (non-void) markets traded |
