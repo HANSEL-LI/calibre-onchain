@@ -130,6 +130,14 @@ public profile API; the on-chain resolver follows `OffchainLookup` to it.
    opted-in `display_name`: `<name>.hicalibre.eth` should return that user's
    `addr()` + `gg.calibre.rank` / `com.discord` text records.
 
+**Redeploying the running gateway** (after any change merges to `main`): run
+`sudo bash gateway/deploy.sh` on the VPS — it hard-resets the clone to
+`origin/main`, **rebuilds `dist/`** (gitignored + built-on-deploy, so a bare
+`git pull` leaves it stale — the #642 failure mode where new text records
+returned null on mainnet for hours), restarts `calibre-ens-gateway`, and runs
+`gateway/smoke-records.mjs` to assert `<name>.hicalibre.eth` resolves the full
+record set (incl. `avatar`/`url`/`description`) live before declaring success.
+
 "Updating a text record" = updating calibre's DB (free + instant); the gateway
 reads only the public profile API and never touches the DB.
 
